@@ -1,6 +1,6 @@
 use eyre::{eyre, Result};
 use nil_syntax::{
-    ast::{BinaryOpKind, Expr, LiteralKind, UnaryOpKind},
+    ast::{BinaryOp, BinaryOpKind, Expr, Literal, LiteralKind, UnaryOp, UnaryOpKind},
     parser,
 };
 
@@ -20,35 +20,43 @@ pub fn code(code: &str) -> Result<Value> {
 
 fn eval_expr(expr: &Expr) -> Result<Value> {
     match expr {
-        Expr::Literal(lit) => match lit.kind().unwrap() {
-            LiteralKind::Int => Ok(Value::Integer(lit.token().unwrap().text().parse::<i64>()?)),
+        Expr::Literal(lit) => eval_literal(lit),
+        Expr::BinaryOp(bo) => eval_binop(bo),
+        Expr::UnaryOp(uo) => eval_unary_op(uo),
+        expr => Err(eyre!("expr: {:?}", expr)),
+    }
+}
 
-            token => todo!("{:?}", token),
+fn eval_literal(lit: &Literal) -> Result<Value> {
+    match lit.kind().unwrap() {
+        LiteralKind::Int => Ok(Value::Integer(lit.token().unwrap().text().parse::<i64>()?)),
+        token => Err(eyre!("{:?}", token)),
+    }
+}
+
+fn eval_binop(bin_op: &BinaryOp) -> Result<Value> {
+    let lhs = eval_expr(&bin_op.lhs().ok_or_else(|| eyre!("Missing LHS"))?)?;
+    let rhs = eval_expr(&bin_op.rhs().ok_or_else(|| eyre!("Missing RHS"))?)?;
+    match (lhs, rhs) {
+        (Value::Integer(lhs), Value::Integer(rhs)) => match bin_op.op_kind().unwrap() {
+            BinaryOpKind::Add => Ok(Value::Integer(lhs + rhs)),
+            BinaryOpKind::Sub => Ok(Value::Integer(lhs - rhs)),
+            op_token => todo!("op_token: {:?}", op_token),
         },
-        Expr::BinaryOp(bo) => {
-            let lhs = eval_expr(&bo.lhs().unwrap())?;
-            let rhs = eval_expr(&bo.rhs().unwrap())?;
-            match (lhs, rhs) {
-                (Value::Integer(lhs), Value::Integer(rhs)) => match bo.op_kind().unwrap() {
-                    BinaryOpKind::Add => Ok(Value::Integer(lhs + rhs)),
-                    BinaryOpKind::Sub => Ok(Value::Integer(lhs - rhs)),
-                    op_token => todo!("op_token: {:?}", op_token),
-                },
-            }
-        }
-        Expr::UnaryOp(uo) => {
-            let rhs = eval_expr(
-                &uo.arg()
-                    .ok_or_else(|| eyre!("Missing argument for unary operator"))?,
-            )?;
-            match rhs {
-                Value::Integer(rhs) => match uo.op_kind().unwrap() {
-                    UnaryOpKind::Negate => Ok(Value::Integer(-rhs)),
-                    UnaryOpKind::Not => todo!("Not is not implemented"),
-                },
-            }
-        }
-        expr => todo!("expr: {:?}", expr),
+    }
+}
+
+fn eval_unary_op(unary_op: &UnaryOp) -> Result<Value> {
+    let rhs = eval_expr(
+        &unary_op
+            .arg()
+            .ok_or_else(|| eyre!("Missing argument for unary operator"))?,
+    )?;
+    match rhs {
+        Value::Integer(rhs) => match unary_op.op_kind().unwrap() {
+            UnaryOpKind::Negate => Ok(Value::Integer(-rhs)),
+            UnaryOpKind::Not => Err(eyre!("Not is not implemented")),
+        },
     }
 }
 

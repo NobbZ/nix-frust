@@ -42,6 +42,7 @@ fn eval_binop(bin_op: &BinaryOp) -> Result<Value> {
             BinaryOpKind::Add => Ok(Value::Integer(lhs + rhs)),
             BinaryOpKind::Sub => Ok(Value::Integer(lhs - rhs)),
             BinaryOpKind::Mul => Ok(Value::Integer(lhs * rhs)),
+            BinaryOpKind::Div => Ok(Value::Integer(lhs / rhs)),
             op_token => todo!("op_token: {:?}", op_token),
         },
     }
@@ -98,6 +99,18 @@ mod tests {
     #[case::lhs_neg("-1 * 2", Value::Integer(-2))]
     #[case::rhs_neg("1 * -2", Value::Integer(-2))]
     fn simple_multiplication(#[case] code: &str, #[case] expected: Value) {
+        assert_eq!(super::code(code).unwrap(), expected);
+    }
+
+    #[rstest]
+    #[case::two_summands("4 / 2", Value::Integer(2))]
+    #[case::three_summands("12 / 2 / 3", Value::Integer(2))]
+    #[case::lhs_neg("-4 / 2", Value::Integer(-2))]
+    #[case::rhs_neg("4 / -2", Value::Integer(-2))]
+    // Regular nix would parse this as a path, not a division.
+    // #[case::two_no_space("4/2", Value::Integer(2))]
+    // #[case::three_no_space("12/2/3", Value::Integer(2))]
+    fn simple_division(#[case] code: &str, #[case] expected: Value) {
         assert_eq!(super::code(code).unwrap(), expected);
     }
 }

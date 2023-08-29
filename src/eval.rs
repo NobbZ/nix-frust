@@ -41,6 +41,7 @@ fn eval_binop(bin_op: &BinaryOp) -> Result<Value> {
         (Value::Integer(lhs), Value::Integer(rhs)) => match bin_op.op_kind().unwrap() {
             BinaryOpKind::Add => Ok(Value::Integer(lhs + rhs)),
             BinaryOpKind::Sub => Ok(Value::Integer(lhs - rhs)),
+            BinaryOpKind::Mul => Ok(Value::Integer(lhs * rhs)),
             op_token => todo!("op_token: {:?}", op_token),
         },
     }
@@ -86,6 +87,17 @@ mod tests {
     #[case::lhs_neg("-1 - 2", Value::Integer(-3))]
     #[case::rhs_neg("1 - -2", Value::Integer(3))]
     fn simple_substractions(#[case] code: &str, #[case] expected: Value) {
+        assert_eq!(super::code(code).unwrap(), expected);
+    }
+
+    #[rstest]
+    #[case::two_summands("1 * 2", Value::Integer(2))]
+    #[case::three_summands("1 * 2 * 3", Value::Integer(6))]
+    #[case::two_no_space("1*2", Value::Integer(2))]
+    #[case::three_no_space("1*2*3", Value::Integer(6))]
+    #[case::lhs_neg("-1 * 2", Value::Integer(-2))]
+    #[case::rhs_neg("1 * -2", Value::Integer(-2))]
+    fn simple_multiplication(#[case] code: &str, #[case] expected: Value) {
         assert_eq!(super::code(code).unwrap(), expected);
     }
 }

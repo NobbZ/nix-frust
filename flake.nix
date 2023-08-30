@@ -42,8 +42,7 @@
       legacyPackages.helpers.testrunner = pkgs.writeShellScriptBin "testrunner" ''
         ${pkgs.inotify-tools}/bin/inotifywait -m -r -e close_write,moved_to --format '%w%f' src | \
           while read dir action file; do
-            cargo nextest run
-            cargo test --doc
+            cargo test --release -- --format=terse
             cargo doc
           done
       '';

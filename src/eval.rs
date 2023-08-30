@@ -1,6 +1,6 @@
 use eyre::{eyre, Result};
 use nil_syntax::{
-    ast::{BinaryOp, BinaryOpKind, Expr, Literal, LiteralKind, UnaryOp, UnaryOpKind},
+    ast::{BinaryOp, BinaryOpKind, Expr, Literal, LiteralKind, Ref, UnaryOp, UnaryOpKind},
     parser,
 };
 
@@ -8,6 +8,7 @@ use nil_syntax::{
 pub enum Value {
     Integer(i64),
     Float(f64),
+    Bool(bool),
 }
 
 pub fn code(code: &str) -> Result<Value> {
@@ -24,7 +25,17 @@ fn eval_expr(expr: &Expr) -> Result<Value> {
         Expr::Literal(lit) => eval_literal(lit),
         Expr::BinaryOp(bo) => eval_binop(bo),
         Expr::UnaryOp(uo) => eval_unary_op(uo),
+        Expr::Ref(rf) => eval_ref(rf),
         expr => Err(eyre!("expr: {:?}", expr)),
+    }
+}
+
+fn eval_ref(rf: &Ref) -> Result<Value> {
+    let token = rf.token().ok_or_else(|| eyre!("Missing token"))?;
+    match token.text() {
+        "true" => Ok(Value::Bool(true)),
+        "false" => Ok(Value::Bool(false)),
+        name => Err(eyre!("Unknown name: {:?}", name)),
     }
 }
 
@@ -68,6 +79,7 @@ fn eval_binop(bin_op: &BinaryOp) -> Result<Value> {
             BinaryOpKind::Div => Ok(Value::Float(lhs / rhs)),
             op_token => todo!("op_token: {:?}", op_token),
         },
+        (lhs, rhs) => todo!("lhs: {:?}, rhs: {:?}", lhs, rhs),
     }
 }
 
@@ -85,6 +97,10 @@ fn eval_unary_op(unary_op: &UnaryOp) -> Result<Value> {
         Value::Float(val) => match unary_op.op_kind().unwrap() {
             UnaryOpKind::Negate => Ok(Value::Float(-val)),
             UnaryOpKind::Not => Err(eyre!("Not is not implemented")),
+        },
+        Value::Bool(val) => match unary_op.op_kind().unwrap() {
+            UnaryOpKind::Not => Ok(Value::Bool(!val)),
+            UnaryOpKind::Negate => Err(eyre!("Negate is not implemented")),
         },
     }
 }
@@ -150,6 +166,14 @@ mod tests {
     // #[case::two_no_space("4/2", Value::Integer(2))]
     // #[case::three_no_space("12/2/3", Value::Integer(2))]
     fn simple_division(#[case] code: &str, #[case] expected: Value) {
+        assert_eq!(super::code(code).unwrap(), expected);
+    }
+
+    #[rstest]
+    #[case::simple("true", Value::Bool(true))]
+    #[case::simple("false", Value::Bool(false))]
+    #[case::negated("!true", Value::Bool(false))]
+    fn simple_booleans(#[case] code: &str, #[case] expected: Value) {
         assert_eq!(super::code(code).unwrap(), expected);
     }
 }

@@ -4,13 +4,13 @@ use eyre::{eyre, Result};
 use nil_syntax::{
     ast::{
         AttrSet, BinaryOp, BinaryOpKind, Expr, HasBindings, HasStringParts, IndentString, LetIn,
-        Literal, LiteralKind, Ref, String as StringAst, StringPart, UnaryOp, UnaryOpKind,
+        Literal, LiteralKind, Ref, Select, String as StringAst, StringPart, UnaryOp, UnaryOpKind,
     },
     parser,
 };
 use parking_lot::Mutex;
 
-#[derive(Debug, PartialEq, Clone)]
+#[derive(Debug, Clone)]
 pub enum Value {
     Integer(i64),
     Float(f64),
@@ -18,7 +18,22 @@ pub enum Value {
     Path(String),
     String(String),
     AttrSet(HashMap<String, Value>),
-    Thunk(Expr),
+    Thunk(Expr, Ctx),
+}
+
+impl PartialEq<Value> for Value {
+    fn eq(&self, other: &Self) -> bool {
+        match (self, other) {
+            (Value::Integer(lhs), Value::Integer(rhs)) => lhs == rhs,
+            (Value::Float(lhs), Value::Float(rhs)) => lhs == rhs,
+            (Value::Bool(lhs), Value::Bool(rhs)) => lhs == rhs,
+            (Value::Path(lhs), Value::Path(rhs)) => lhs == rhs,
+            (Value::String(lhs), Value::String(rhs)) => lhs == rhs,
+            (Value::AttrSet(lhs), Value::AttrSet(rhs)) => lhs == rhs,
+            (Value::Thunk(_, _), Value::Thunk(_, _)) => false,
+            _ => false,
+        }
+    }
 }
 
 #[derive(Clone, Default, Debug)]
@@ -44,11 +59,11 @@ impl Ctx {
         N: Into<String>,
     {
         let name = name.into();
-        let mut ctx = dbg!(self).0.lock();
+        let mut ctx = self.0.lock();
 
-        if let Some(value) = dbg!(ctx.values.get(&name)) {
+        if let Some(value) = ctx.values.get(&name) {
             let v = match value {
-                Value::Thunk(expr) => eval_expr(expr, self)?,
+                Value::Thunk(expr, _) => eval_expr(expr, self)?,
                 value => value.clone(),
             };
 
@@ -78,9 +93,37 @@ fn eval_expr(expr: &Expr, ctx: &Ctx) -> Result<Value> {
         Expr::LetIn(li) => eval_let_in(li, ctx),
         Expr::Literal(lit) => eval_literal(lit, ctx),
         Expr::Ref(rf) => eval_ref(rf, ctx),
+        Expr::Select(s) => eval_select(s, ctx),
         Expr::String(s) => eval_str(s, ctx),
         Expr::UnaryOp(uo) => eval_unary_op(uo, ctx),
         expr => Err(eyre!("expr: {:?}", expr)),
+    }
+}
+
+fn eval_select(s: &Select, ctx: &Ctx) -> Result<Value> {
+    let attrpath = s
+        .attrpath()
+        .ok_or_else(|| eyre!("Missing attrpath"))?
+        .attrs()
+        .map(|attr| match attr {
+            nil_syntax::ast::Attr::Dynamic(_) => todo!(),
+            nil_syntax::ast::Attr::Name(name) => name.token().unwrap().text().into(),
+            nil_syntax::ast::Attr::String(_) => todo!(),
+        })
+        .collect::<Vec<String>>();
+
+    if attrpath.len() > 1 {
+        Err(eyre!("Nested-attrpath is not yet implemented"))?;
+    }
+
+    let set = s.set().ok_or_else(|| eyre!("Missing set"))?;
+
+    match eval_expr(&set, ctx)? {
+        Value::AttrSet(set) => match &set[&attrpath[0]] {
+            Value::Thunk(_expr, ctx) => ctx.resolve(attrpath[0].clone()),
+            value => Ok(value.clone()),
+        },
+        value => Err(eyre!("Selecting from {:?}", value)),
     }
 }
 
@@ -91,13 +134,13 @@ fn eval_let_in(li: &LetIn, ctx: &Ctx) -> Result<Value> {
 
     for binding in li.bindings() {
         use nil_syntax::ast::Binding;
-        let (name, value_expr) = match dbg!(binding) {
+        let (name, value_expr) = match binding {
             Binding::Inherit(_) => Err(eyre!("Inherit is not implemented"))?,
             Binding::AttrpathValue(path) => (
                 path.attrpath()
                     .ok_or_else(|| eyre!("Missing attrpath for binding"))?
                     .attrs()
-                    .map(|attr| match dbg!(attr) {
+                    .map(|attr| match attr {
                         nil_syntax::ast::Attr::Dynamic(_) => todo!(),
                         nil_syntax::ast::Attr::Name(name) => name.token().unwrap().text().into(),
                         nil_syntax::ast::Attr::String(_) => todo!(),
@@ -113,7 +156,10 @@ fn eval_let_in(li: &LetIn, ctx: &Ctx) -> Result<Value> {
         }
 
         // scope[&name[0]] = Value::Thunk(value_expr.clone());
-        scope.insert(name[0].clone(), Value::Thunk(value_expr.clone()));
+        scope.insert(
+            name[0].clone(),
+            Value::Thunk(value_expr.clone(), own_ctx.clone()),
+        );
     }
 
     {
@@ -126,12 +172,47 @@ fn eval_let_in(li: &LetIn, ctx: &Ctx) -> Result<Value> {
         .unwrap_or_else(|| Ok(Value::Bool(false)))
 }
 
-fn eval_attr_set(_set: &AttrSet, _ctx: &Ctx) -> Result<Value> {
-    let result = HashMap::new();
+fn eval_attr_set(set: &AttrSet, ctx: &Ctx) -> Result<Value> {
+    let own_ctx = Ctx::new_with_parent(ctx);
 
-    // TODO: implement attrset with KV pairs
+    let mut scope: HashMap<String, Value> = HashMap::new();
 
-    Ok(Value::AttrSet(result))
+    for binding in set.bindings() {
+        use nil_syntax::ast::Binding;
+        let (name, value_expr) = match binding {
+            Binding::Inherit(_) => Err(eyre!("Inherit is not implemented"))?,
+            Binding::AttrpathValue(path) => (
+                path.attrpath()
+                    .ok_or_else(|| eyre!("Missing attrpath for binding"))?
+                    .attrs()
+                    .map(|attr| match attr {
+                        nil_syntax::ast::Attr::Dynamic(_) => todo!(),
+                        nil_syntax::ast::Attr::Name(name) => name.token().unwrap().text().into(),
+                        nil_syntax::ast::Attr::String(_) => todo!(),
+                    })
+                    .collect::<Vec<String>>(),
+                path.value()
+                    .ok_or_else(|| eyre!("Missing value for binding"))?,
+            ),
+        };
+
+        if name.len() > 1 {
+            Err(eyre!("Nested-attrpath is not yet implemented"))?;
+        }
+
+        // scope[&name[0]] = Value::Thunk(value_expr.clone());
+        scope.insert(
+            name[0].clone(),
+            Value::Thunk(value_expr.clone(), own_ctx.clone()),
+        );
+    }
+
+    {
+        let mut ctx_builder = own_ctx.0.lock();
+        ctx_builder.values = scope.clone();
+    }
+
+    Ok(Value::AttrSet(scope))
 }
 
 fn eval_str(s: &StringAst, _ctx: &Ctx) -> Result<Value> {
@@ -256,7 +337,7 @@ fn eval_unary_op(unary_op: &UnaryOp, ctx: &Ctx) -> Result<Value> {
             "Operation {:?} is not implemented for attrsets",
             unary_op
         )),
-        Value::Thunk(_) => Err(eyre!(
+        Value::Thunk(_, _) => Err(eyre!(
             "Operation {:?} is not implemented for thunks",
             unary_op
         )),
@@ -364,7 +445,7 @@ mod tests {
 
     #[rstest]
     #[case::let_in("let a = 1; in a", Value::Integer(1))]
-    // #[case::attr_set("{a = 1;}.a", Value::Integer(1))]
+    #[case::attr_set("{a = 1;}.a", Value::Integer(1))]
     // #[case::combine("let s = {a = 1;}; in s.a", Value::Integer(1))]
     fn variables(#[case] code: &str, #[case] expected: Value) {
         assert_eq!(super::code(code).unwrap(), expected);

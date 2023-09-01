@@ -119,9 +119,16 @@ fn eval_select(s: &Select, ctx: &Ctx) -> Result<Value> {
     let set = s.set().ok_or_else(|| eyre!("Missing set"))?;
 
     match eval_expr(&set, ctx)? {
-        Value::AttrSet(set) => match &set[&attrpath[0]] {
-            Value::Thunk(_expr, ctx) => ctx.resolve(attrpath[0].clone()),
-            value => Ok(value.clone()),
+        Value::AttrSet(set) => match set.get(&attrpath[0]) {
+            Some(Value::Thunk(_expr, ctx)) => ctx.resolve(attrpath[0].clone()),
+            Some(value) => Ok(value.clone()),
+            None => {
+                if let Some(default) = s.default_expr() {
+                    eval_expr(&default, ctx)
+                } else {
+                    Err(eyre!("Missing attribute: {}", attrpath[0]))
+                }
+            }
         },
         value => Err(eyre!("Selecting from {:?}", value)),
     }
@@ -446,7 +453,8 @@ mod tests {
     #[rstest]
     #[case::let_in("let a = 1; in a", Value::Integer(1))]
     #[case::attr_set("{a = 1;}.a", Value::Integer(1))]
-    // #[case::combine("let s = {a = 1;}; in s.a", Value::Integer(1))]
+    #[case::combine("let s = {a = 1;}; in s.a", Value::Integer(1))]
+    #[case::or("let s = {a = 1;}; in s.b or false", Value::Bool(false))]
     fn variables(#[case] code: &str, #[case] expected: Value) {
         assert_eq!(super::code(code).unwrap(), expected);
     }

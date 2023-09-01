@@ -1,19 +1,64 @@
+use std::{collections::HashMap, sync::Arc};
+
 use eyre::{eyre, Result};
 use nil_syntax::{
     ast::{
-        BinaryOp, BinaryOpKind, Expr, HasStringParts, IndentString, Literal, LiteralKind, Ref,
-        String as StringAst, StringPart, UnaryOp, UnaryOpKind,
+        AttrSet, BinaryOp, BinaryOpKind, Expr, HasBindings, HasStringParts, IndentString, LetIn,
+        Literal, LiteralKind, Ref, String as StringAst, StringPart, UnaryOp, UnaryOpKind,
     },
     parser,
 };
+use parking_lot::Mutex;
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, Clone)]
 pub enum Value {
     Integer(i64),
     Float(f64),
     Bool(bool),
     Path(String),
     String(String),
+    AttrSet(HashMap<String, Value>),
+    Thunk(Expr),
+}
+
+#[derive(Clone, Default, Debug)]
+pub struct Ctx(Arc<Mutex<Context>>);
+
+#[derive(Default, Debug)]
+pub struct Context {
+    values: HashMap<String, Value>,
+    #[allow(dead_code)]
+    parent: Option<Ctx>,
+}
+
+impl Ctx {
+    fn new_with_parent(parent: &Ctx) -> Self {
+        Self(Arc::new(Mutex::new(Context {
+            values: HashMap::new(),
+            parent: Some(parent.clone()),
+        })))
+    }
+
+    fn resolve<N>(&self, name: N) -> Result<Value>
+    where
+        N: Into<String>,
+    {
+        let name = name.into();
+        let mut ctx = dbg!(self).0.lock();
+
+        if let Some(value) = dbg!(ctx.values.get(&name)) {
+            let v = match value {
+                Value::Thunk(expr) => eval_expr(expr, &self)?,
+                value => value.clone(),
+            };
+
+            ctx.values.insert(name.clone(), v.clone());
+
+            return Ok(v);
+        }
+
+        Err(eyre!("Unknown variable: {}", name))
+    }
 }
 
 pub fn code(code: &str) -> Result<Value> {
@@ -22,22 +67,75 @@ pub fn code(code: &str) -> Result<Value> {
         .expr()
         .ok_or_else(|| eyre!("No root-expression"))?;
 
-    Ok(eval_expr(&expr)?)
+    Ok(eval_expr(&expr, &Default::default())?)
 }
 
-fn eval_expr(expr: &Expr) -> Result<Value> {
+fn eval_expr(expr: &Expr, ctx: &Ctx) -> Result<Value> {
     match expr {
-        Expr::Literal(lit) => eval_literal(lit),
-        Expr::BinaryOp(bo) => eval_binop(bo),
-        Expr::UnaryOp(uo) => eval_unary_op(uo),
-        Expr::Ref(rf) => eval_ref(rf),
-        Expr::String(s) => eval_str(s),
-        Expr::IndentString(is) => eval_indent_str(is),
+        Expr::AttrSet(set) => eval_attr_set(set, ctx),
+        Expr::BinaryOp(bo) => eval_binop(bo, ctx),
+        Expr::IndentString(is) => eval_indent_str(is, ctx),
+        Expr::LetIn(li) => eval_let_in(li, ctx),
+        Expr::Literal(lit) => eval_literal(lit, ctx),
+        Expr::Ref(rf) => eval_ref(rf, ctx),
+        Expr::String(s) => eval_str(s, ctx),
+        Expr::UnaryOp(uo) => eval_unary_op(uo, ctx),
         expr => Err(eyre!("expr: {:?}", expr)),
     }
 }
 
-fn eval_str(s: &StringAst) -> Result<Value> {
+fn eval_let_in(li: &LetIn, ctx: &Ctx) -> Result<Value> {
+    let own_ctx = Ctx::new_with_parent(ctx);
+
+    let mut scope: HashMap<String, Value> = HashMap::new();
+
+    for binding in li.bindings() {
+        use nil_syntax::ast::Binding;
+        let (name, value_expr) = match dbg!(binding) {
+            Binding::Inherit(_) => Err(eyre!("Inherit is not implemented"))?,
+            Binding::AttrpathValue(path) => (
+                path.attrpath()
+                    .ok_or_else(|| eyre!("Missing attrpath for binding"))?
+                    .attrs()
+                    .into_iter()
+                    .map(|attr| match dbg!(attr) {
+                        nil_syntax::ast::Attr::Dynamic(_) => todo!(),
+                        nil_syntax::ast::Attr::Name(name) => name.token().unwrap().text().into(),
+                        nil_syntax::ast::Attr::String(_) => todo!(),
+                    })
+                    .collect::<Vec<String>>(),
+                path.value()
+                    .ok_or_else(|| eyre!("Missing value for binding"))?,
+            ),
+        };
+
+        if name.len() > 1 {
+            Err(eyre!("Nested-attrpath is not yet implemented"))?;
+        }
+
+        // scope[&name[0]] = Value::Thunk(value_expr.clone());
+        scope.insert(name[0].clone(), Value::Thunk(value_expr.clone()));
+    }
+
+    {
+        let mut ctx_builder = own_ctx.0.lock();
+        ctx_builder.values = scope;
+    }
+
+    li.body()
+        .map(|body| eval_expr(&body, &own_ctx))
+        .unwrap_or_else(|| Ok(Value::Bool(false)))
+}
+
+fn eval_attr_set(_set: &AttrSet, _ctx: &Ctx) -> Result<Value> {
+    let result = HashMap::new();
+
+    // TODO: implement attrset with KV pairs
+
+    Ok(Value::AttrSet(result))
+}
+
+fn eval_str(s: &StringAst, _ctx: &Ctx) -> Result<Value> {
     let mut result = String::new();
 
     for part in s.string_parts() {
@@ -53,7 +151,7 @@ fn eval_str(s: &StringAst) -> Result<Value> {
     Ok(Value::String(result))
 }
 
-fn eval_indent_str(is: &IndentString) -> Result<Value> {
+fn eval_indent_str(is: &IndentString, _ctx: &Ctx) -> Result<Value> {
     let start = is.start_quote2_token().unwrap().text_range().start();
     let stop = is.end_quote2_token().unwrap().text_range().end();
     let capacity_guess = stop - start;
@@ -73,16 +171,16 @@ fn eval_indent_str(is: &IndentString) -> Result<Value> {
     Ok(Value::String(result))
 }
 
-fn eval_ref(rf: &Ref) -> Result<Value> {
+fn eval_ref(rf: &Ref, ctx: &Ctx) -> Result<Value> {
     let token = rf.token().ok_or_else(|| eyre!("Missing token"))?;
     match token.text() {
         "true" => Ok(Value::Bool(true)),
         "false" => Ok(Value::Bool(false)),
-        name => Err(eyre!("Unknown name: {:?}", name)),
+        name => Ok(ctx.resolve(name)?),
     }
 }
 
-fn eval_literal(lit: &Literal) -> Result<Value> {
+fn eval_literal(lit: &Literal, _ctx: &Ctx) -> Result<Value> {
     match lit.kind().unwrap() {
         LiteralKind::Int => Ok(Value::Integer(lit.token().unwrap().text().parse::<i64>()?)),
         LiteralKind::Float => Ok(Value::Float(lit.token().unwrap().text().parse::<f64>()?)),
@@ -91,9 +189,9 @@ fn eval_literal(lit: &Literal) -> Result<Value> {
     }
 }
 
-fn eval_binop(bin_op: &BinaryOp) -> Result<Value> {
-    let lhs = eval_expr(&bin_op.lhs().ok_or_else(|| eyre!("Missing LHS"))?)?;
-    let rhs = eval_expr(&bin_op.rhs().ok_or_else(|| eyre!("Missing RHS"))?)?;
+fn eval_binop(bin_op: &BinaryOp, ctx: &Ctx) -> Result<Value> {
+    let lhs = eval_expr(&bin_op.lhs().ok_or_else(|| eyre!("Missing LHS"))?, ctx)?;
+    let rhs = eval_expr(&bin_op.rhs().ok_or_else(|| eyre!("Missing RHS"))?, ctx)?;
     match (lhs, rhs) {
         (Value::Integer(lhs), Value::Integer(rhs)) => match bin_op.op_kind().unwrap() {
             BinaryOpKind::Add => Ok(Value::Integer(lhs + rhs)),
@@ -127,11 +225,12 @@ fn eval_binop(bin_op: &BinaryOp) -> Result<Value> {
     }
 }
 
-fn eval_unary_op(unary_op: &UnaryOp) -> Result<Value> {
+fn eval_unary_op(unary_op: &UnaryOp, ctx: &Ctx) -> Result<Value> {
     let rhs = eval_expr(
         &unary_op
             .arg()
             .ok_or_else(|| eyre!("Missing argument for unary operator"))?,
+        ctx,
     )?;
     match rhs {
         Value::Integer(val) => match unary_op.op_kind().unwrap() {
@@ -152,6 +251,14 @@ fn eval_unary_op(unary_op: &UnaryOp) -> Result<Value> {
         )),
         Value::String(_) => Err(eyre!(
             "Operation {:?} is not implemented for strings",
+            unary_op
+        )),
+        Value::AttrSet(_) => Err(eyre!(
+            "Operation {:?} is not implemented for attrsets",
+            unary_op
+        )),
+        Value::Thunk(_) => Err(eyre!(
+            "Operation {:?} is not implemented for thunks",
             unary_op
         )),
     }
@@ -251,7 +358,16 @@ mod tests {
     #[case("~/a/b", Value::Path("~/a/b".into()))]
     #[case("\"~/a/b\"", Value::String("~/a/b".into()))]
     #[case(INDENT_STRING, Value::String("\nfoo\nbar\n".into()))]
+    #[case("{}", Value::AttrSet(HashMap::new()))]
     fn simple_literals(#[case] code: &str, #[case] expected: Value) {
+        assert_eq!(super::code(code).unwrap(), expected);
+    }
+
+    #[rstest]
+    #[case::let_in("let a = 1; in a", Value::Integer(1))]
+    // #[case::attr_set("{a = 1;}.a", Value::Integer(1))]
+    // #[case::combine("let s = {a = 1;}; in s.a", Value::Integer(1))]
+    fn variables(#[case] code: &str, #[case] expected: Value) {
         assert_eq!(super::code(code).unwrap(), expected);
     }
 }

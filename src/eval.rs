@@ -48,7 +48,7 @@ impl Ctx {
 
         if let Some(value) = dbg!(ctx.values.get(&name)) {
             let v = match value {
-                Value::Thunk(expr) => eval_expr(expr, &self)?,
+                Value::Thunk(expr) => eval_expr(expr, self)?,
                 value => value.clone(),
             };
 
@@ -67,7 +67,7 @@ pub fn code(code: &str) -> Result<Value> {
         .expr()
         .ok_or_else(|| eyre!("No root-expression"))?;
 
-    Ok(eval_expr(&expr, &Default::default())?)
+    eval_expr(&expr, &Default::default())
 }
 
 fn eval_expr(expr: &Expr, ctx: &Ctx) -> Result<Value> {
@@ -97,7 +97,6 @@ fn eval_let_in(li: &LetIn, ctx: &Ctx) -> Result<Value> {
                 path.attrpath()
                     .ok_or_else(|| eyre!("Missing attrpath for binding"))?
                     .attrs()
-                    .into_iter()
                     .map(|attr| match dbg!(attr) {
                         nil_syntax::ast::Attr::Dynamic(_) => todo!(),
                         nil_syntax::ast::Attr::Name(name) => name.token().unwrap().text().into(),

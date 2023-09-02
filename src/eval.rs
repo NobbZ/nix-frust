@@ -1,16 +1,19 @@
-use std::{collections::HashMap, sync::Arc};
+use std::{collections::HashMap, rc::Rc, sync::Arc};
 
 use eyre::{eyre, Result};
 use nil_syntax::{
     ast::{
-        AttrSet, BinaryOp, BinaryOpKind, Expr, HasBindings, HasStringParts, IndentString, LetIn,
-        Literal, LiteralKind, Ref, Select, String as StringAst, StringPart, UnaryOp, UnaryOpKind,
+        Apply, AttrSet, BinaryOp, BinaryOpKind, Expr, HasBindings, HasStringParts, IndentString,
+        Lambda, LetIn, Literal, LiteralKind, Ref, Select, String as StringAst, StringPart, UnaryOp,
+        UnaryOpKind,
     },
     parser,
 };
 use parking_lot::Mutex;
+use partialdebug::placeholder::PartialDebug;
 
-#[derive(Debug, Clone)]
+#[derive(PartialDebug, Clone)]
+#[debug_placeholder = "Fun"]
 pub enum Value {
     Integer(i64),
     Float(f64),
@@ -18,6 +21,7 @@ pub enum Value {
     Path(String),
     String(String),
     AttrSet(HashMap<String, Value>),
+    Lambda(Rc<dyn Fn(Value) -> Result<Value>>),
     Thunk(Expr, Ctx),
 }
 
@@ -87,6 +91,7 @@ pub fn code(code: &str) -> Result<Value> {
 
 fn eval_expr(expr: &Expr, ctx: &Ctx) -> Result<Value> {
     match expr {
+        Expr::Apply(f) => eval_apply(f, ctx),
         Expr::AttrSet(set) => eval_attr_set(set, ctx),
         Expr::BinaryOp(bo) => eval_binop(bo, ctx),
         Expr::IndentString(is) => eval_indent_str(is, ctx),
@@ -96,8 +101,65 @@ fn eval_expr(expr: &Expr, ctx: &Ctx) -> Result<Value> {
         Expr::Select(s) => eval_select(s, ctx),
         Expr::String(s) => eval_str(s, ctx),
         Expr::UnaryOp(uo) => eval_unary_op(uo, ctx),
+        Expr::Lambda(l) => eval_lambda(l, ctx),
         expr => Err(eyre!("expr: {:?}", expr)),
     }
+}
+
+fn eval_lambda(l: &Lambda, ctx: &Ctx) -> Result<Value> {
+    let l = l.clone();
+    let ctx = ctx.clone();
+
+    let arg = l
+        .clone()
+        .param()
+        .ok_or_else(|| eyre!("Missing param"))?
+        .name()
+        .ok_or_else(|| eyre!("Missing name"))?
+        .token()
+        .ok_or_else(|| eyre!("Missing token"))?;
+
+    Ok(Value::Lambda(Rc::new(move |val| {
+        let own_ctx = Ctx::new_with_parent(&ctx);
+
+        let mut scope: HashMap<String, Value> = HashMap::new();
+
+        scope.insert(arg.text().to_owned(), val);
+
+        {
+            let mut ctx_builder = own_ctx.0.lock();
+            ctx_builder.values = scope;
+        }
+
+        eval_expr(&l.body().ok_or_else(|| eyre!("Missing body"))?, &own_ctx)
+    })))
+}
+
+fn eval_apply(f: &Apply, ctx: &Ctx) -> Result<Value> {
+    let fun = f.function().ok_or_else(|| eyre!("Missing function"))?;
+
+    let callable = match fun {
+        Expr::Ref(ref rf) => {
+            let name = rf.token().ok_or_else(|| eyre!("Missing token"))?;
+            let func = ctx.resolve(name.text())?;
+            match func {
+                Value::Thunk(expr, ctx) => eval_expr(&expr, &ctx),
+                Value::Lambda(l) => Ok(Value::Lambda(l)),
+                _ => Err(eyre!("Function must be a thunk or attrset")),
+            }
+        }
+        expr => todo!("eval fun: expr {expr:?}"),
+    }?;
+
+    match callable {
+        Value::Lambda(l) => {
+            let arg = eval_expr(&f.argument().ok_or_else(|| eyre!("Missing argument"))?, ctx)?;
+            l(arg)
+        }
+        _ => todo!("eval apply: callable {callable:?}"),
+    }
+
+    // Err(eyre!("apply not implemented yet"))
 }
 
 fn eval_select(s: &Select, ctx: &Ctx) -> Result<Value> {
@@ -348,6 +410,10 @@ fn eval_unary_op(unary_op: &UnaryOp, ctx: &Ctx) -> Result<Value> {
             "Operation {:?} is not implemented for thunks",
             unary_op
         )),
+        Value::Lambda(_) => Err(eyre!(
+            "Operation {:?} is not implemented for lambdas",
+            unary_op
+        )),
     }
 }
 
@@ -456,6 +522,14 @@ mod tests {
     #[case::combine("let s = {a = 1;}; in s.a", Value::Integer(1))]
     #[case::or("let s = {a = 1;}; in s.b or false", Value::Bool(false))]
     fn variables(#[case] code: &str, #[case] expected: Value) {
+        assert_eq!(super::code(code).unwrap(), expected);
+    }
+
+    #[rstest]
+    #[case::fun_def_id("let id = a: a; in id 1", Value::Integer(1))]
+    #[case::fun_def_one_arg("let f = a: 1 + a; in f 1", Value::Integer(2))]
+    // #[case::fun_def_two_arg("let f = a: b: b + a; in f 1 1", Value::Integer(1))]
+    fn functions(#[case] code: &str, #[case] expected: Value) {
         assert_eq!(super::code(code).unwrap(), expected);
     }
 }

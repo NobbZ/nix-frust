@@ -184,13 +184,10 @@ fn eval_select(s: &Select, ctx: &Ctx) -> Result<Value> {
         Value::AttrSet(set) => match set.get(&attrpath[0]) {
             Some(Value::Thunk(_expr, ctx)) => ctx.resolve(attrpath[0].clone()),
             Some(value) => Ok(value.clone()),
-            None => {
-                if let Some(default) = s.default_expr() {
-                    eval_expr(&default, ctx)
-                } else {
-                    Err(eyre!("Missing attribute: {}", attrpath[0]))
-                }
-            }
+            None => match s.default_expr() {
+                Some(default) => eval_expr(&default, ctx),
+                None => Err(eyre!("Missing attribute: {}", attrpath[0])),
+            },
         },
         value => Err(eyre!("Selecting from {:?}", value)),
     }

@@ -2,7 +2,7 @@
 //
 // SPDX-License-Identifier: MIT
 
-use std::{collections::HashMap, rc::Rc, sync::Arc};
+use std::{collections::HashMap, rc::Rc};
 
 use eyre::{eyre, Result};
 use nil_syntax::{
@@ -13,78 +13,12 @@ use nil_syntax::{
     },
     parser,
 };
-use parking_lot::Mutex;
-use partialdebug::placeholder::PartialDebug;
 
-#[derive(PartialDebug, Clone)]
-#[debug_placeholder = "Fun"]
-pub enum Value {
-    AttrSet(HashMap<String, Value>),
-    Bool(bool),
-    Float(f64),
-    Integer(i64),
-    List(Vec<Value>),
-    Path(String),
-    String(String),
-    Lambda(Rc<dyn Fn(Value) -> Result<Value>>),
-    Thunk(Expr, Ctx),
-}
+mod context;
+mod value;
 
-impl PartialEq<Value> for Value {
-    fn eq(&self, other: &Self) -> bool {
-        match (self, other) {
-            (Value::Integer(lhs), Value::Integer(rhs)) => lhs == rhs,
-            (Value::Float(lhs), Value::Float(rhs)) => lhs == rhs,
-            (Value::Bool(lhs), Value::Bool(rhs)) => lhs == rhs,
-            (Value::Path(lhs), Value::Path(rhs)) => lhs == rhs,
-            (Value::String(lhs), Value::String(rhs)) => lhs == rhs,
-            (Value::AttrSet(lhs), Value::AttrSet(rhs)) => lhs == rhs,
-            (Value::List(lhs), Value::List(rhs)) => lhs == rhs,
-            (Value::Thunk(_, _), Value::Thunk(_, _)) => false,
-            _ => false,
-        }
-    }
-}
-
-#[derive(Clone, Default, Debug)]
-pub struct Ctx(Arc<Mutex<Context>>);
-
-#[derive(Default, Debug)]
-pub struct Context {
-    values: HashMap<String, Value>,
-    #[allow(dead_code)]
-    parent: Option<Ctx>,
-}
-
-impl Ctx {
-    fn new_with_parent(parent: &Ctx) -> Self {
-        Self(Arc::new(Mutex::new(Context {
-            values: HashMap::new(),
-            parent: Some(parent.clone()),
-        })))
-    }
-
-    fn resolve<N>(&self, name: N) -> Result<Value>
-    where
-        N: Into<String>,
-    {
-        let name = name.into();
-        let mut ctx = self.0.lock();
-
-        if let Some(value) = ctx.values.get(&name) {
-            let v = match value {
-                Value::Thunk(expr, _) => eval_expr(expr, self)?,
-                value => value.clone(),
-            };
-
-            ctx.values.insert(name.clone(), v.clone());
-
-            return Ok(v);
-        }
-
-        Err(eyre!("Unknown variable: {}", name))
-    }
-}
+use crate::eval::context::Context;
+use crate::eval::value::Value;
 
 pub fn code(code: &str) -> Result<Value> {
     let expr = parser::parse_file(code)
@@ -95,7 +29,7 @@ pub fn code(code: &str) -> Result<Value> {
     eval_expr(&expr, &Default::default())
 }
 
-fn eval_expr(expr: &Expr, ctx: &Ctx) -> Result<Value> {
+fn eval_expr(expr: &Expr, ctx: &Context) -> Result<Value> {
     match expr {
         Expr::Apply(f) => eval_apply(f, ctx),
         Expr::AttrSet(set) => eval_attr_set(set, ctx),
@@ -113,7 +47,7 @@ fn eval_expr(expr: &Expr, ctx: &Ctx) -> Result<Value> {
     }
 }
 
-fn eval_list(l: &List, ctx: &Ctx) -> Result<Value> {
+fn eval_list(l: &List, ctx: &Context) -> Result<Value> {
     let capacity_guess = match l.elements().size_hint() {
         (_lower, Some(upper)) => upper,
         (lower, None) => lower,
@@ -130,8 +64,8 @@ fn eval_list(l: &List, ctx: &Ctx) -> Result<Value> {
     Ok(Value::List(result))
 }
 
-fn eval_lambda(l: &Lambda, ctx: &Ctx) -> Result<Value> {
-    let l = l.clone();
+fn eval_lambda(l: &Lambda, ctx: &Context) -> Result<Value> {
+    let l2 = l.clone();
     let ctx = ctx.clone();
 
     let arg = l
@@ -143,23 +77,26 @@ fn eval_lambda(l: &Lambda, ctx: &Ctx) -> Result<Value> {
         .token()
         .ok_or_else(|| eyre!("Missing token"))?;
 
-    Ok(Value::Lambda(Rc::new(move |val| {
-        let own_ctx = Ctx::new_with_parent(&ctx);
+    Ok(Value::Lambda(
+        Rc::new(move |val| {
+            let own_ctx = Context::new_with_parent(&ctx);
 
-        let mut scope: HashMap<String, Value> = HashMap::new();
+            let mut scope: HashMap<String, Value> = HashMap::new();
 
-        scope.insert(arg.text().to_owned(), val);
+            scope.insert(arg.text().to_owned(), val);
 
-        {
-            let mut ctx_builder = own_ctx.0.lock();
-            ctx_builder.values = scope;
-        }
+            {
+                let mut ctx_builder = own_ctx.0.lock();
+                ctx_builder.values = scope;
+            }
 
-        eval_expr(&l.body().ok_or_else(|| eyre!("Missing body"))?, &own_ctx)
-    })))
+            eval_expr(&l2.body().ok_or_else(|| eyre!("Missing body"))?, &own_ctx)
+        }),
+        l.clone(),
+    ))
 }
 
-fn eval_apply(f: &Apply, ctx: &Ctx) -> Result<Value> {
+fn eval_apply(f: &Apply, ctx: &Context) -> Result<Value> {
     let fun = f.function().ok_or_else(|| eyre!("Missing function"))?;
 
     let callable = match fun {
@@ -168,15 +105,15 @@ fn eval_apply(f: &Apply, ctx: &Ctx) -> Result<Value> {
             let func = ctx.resolve(name.text())?;
             match func {
                 Value::Thunk(expr, ctx) => eval_expr(&expr, &ctx),
-                Value::Lambda(l) => Ok(Value::Lambda(l)),
+                lambda @ Value::Lambda(_, _) => Ok(lambda),
                 _ => Err(eyre!("Function must be a thunk or attrset")),
             }
         }
         expr => todo!("eval fun: expr {expr:?}"),
     }?;
 
-    match callable {
-        Value::Lambda(l) => {
+    match dbg!(&callable) {
+        Value::Lambda(l, _) => {
             let arg = eval_expr(&f.argument().ok_or_else(|| eyre!("Missing argument"))?, ctx)?;
             l(arg)
         }
@@ -186,7 +123,7 @@ fn eval_apply(f: &Apply, ctx: &Ctx) -> Result<Value> {
     // Err(eyre!("apply not implemented yet"))
 }
 
-fn eval_select(s: &Select, ctx: &Ctx) -> Result<Value> {
+fn eval_select(s: &Select, ctx: &Context) -> Result<Value> {
     let attrpath = s
         .attrpath()
         .ok_or_else(|| eyre!("Missing attrpath"))?
@@ -217,8 +154,8 @@ fn eval_select(s: &Select, ctx: &Ctx) -> Result<Value> {
     }
 }
 
-fn eval_let_in(li: &LetIn, ctx: &Ctx) -> Result<Value> {
-    let own_ctx = Ctx::new_with_parent(ctx);
+fn eval_let_in(li: &LetIn, ctx: &Context) -> Result<Value> {
+    let own_ctx = Context::new_with_parent(ctx);
 
     let mut scope: HashMap<String, Value> = HashMap::new();
 
@@ -262,8 +199,8 @@ fn eval_let_in(li: &LetIn, ctx: &Ctx) -> Result<Value> {
         .unwrap_or_else(|| Ok(Value::Bool(false)))
 }
 
-fn eval_attr_set(set: &AttrSet, ctx: &Ctx) -> Result<Value> {
-    let own_ctx = Ctx::new_with_parent(ctx);
+fn eval_attr_set(set: &AttrSet, ctx: &Context) -> Result<Value> {
+    let own_ctx = Context::new_with_parent(ctx);
 
     let mut scope: HashMap<String, Value> = HashMap::new();
 
@@ -305,7 +242,7 @@ fn eval_attr_set(set: &AttrSet, ctx: &Ctx) -> Result<Value> {
     Ok(Value::AttrSet(scope))
 }
 
-fn eval_str(s: &StringAst, _ctx: &Ctx) -> Result<Value> {
+fn eval_str(s: &StringAst, _ctx: &Context) -> Result<Value> {
     let mut result = String::new();
 
     for part in s.string_parts() {
@@ -321,7 +258,7 @@ fn eval_str(s: &StringAst, _ctx: &Ctx) -> Result<Value> {
     Ok(Value::String(result))
 }
 
-fn eval_indent_str(is: &IndentString, _ctx: &Ctx) -> Result<Value> {
+fn eval_indent_str(is: &IndentString, _ctx: &Context) -> Result<Value> {
     let start = is.start_quote2_token().unwrap().text_range().start();
     let stop = is.end_quote2_token().unwrap().text_range().end();
     let capacity_guess = stop - start;
@@ -341,7 +278,7 @@ fn eval_indent_str(is: &IndentString, _ctx: &Ctx) -> Result<Value> {
     Ok(Value::String(result))
 }
 
-fn eval_ref(rf: &Ref, ctx: &Ctx) -> Result<Value> {
+fn eval_ref(rf: &Ref, ctx: &Context) -> Result<Value> {
     let token = rf.token().ok_or_else(|| eyre!("Missing token"))?;
     match token.text() {
         "true" => Ok(Value::Bool(true)),
@@ -350,7 +287,7 @@ fn eval_ref(rf: &Ref, ctx: &Ctx) -> Result<Value> {
     }
 }
 
-fn eval_literal(lit: &Literal, _ctx: &Ctx) -> Result<Value> {
+fn eval_literal(lit: &Literal, _ctx: &Context) -> Result<Value> {
     match lit.kind().unwrap() {
         LiteralKind::Int => Ok(Value::Integer(lit.token().unwrap().text().parse::<i64>()?)),
         LiteralKind::Float => Ok(Value::Float(lit.token().unwrap().text().parse::<f64>()?)),
@@ -359,7 +296,7 @@ fn eval_literal(lit: &Literal, _ctx: &Ctx) -> Result<Value> {
     }
 }
 
-fn eval_binop(bin_op: &BinaryOp, ctx: &Ctx) -> Result<Value> {
+fn eval_binop(bin_op: &BinaryOp, ctx: &Context) -> Result<Value> {
     let lhs = eval_expr(&bin_op.lhs().ok_or_else(|| eyre!("Missing LHS"))?, ctx)?;
     let rhs = eval_expr(&bin_op.rhs().ok_or_else(|| eyre!("Missing RHS"))?, ctx)?;
     match (lhs, rhs) {
@@ -395,7 +332,7 @@ fn eval_binop(bin_op: &BinaryOp, ctx: &Ctx) -> Result<Value> {
     }
 }
 
-fn eval_unary_op(unary_op: &UnaryOp, ctx: &Ctx) -> Result<Value> {
+fn eval_unary_op(unary_op: &UnaryOp, ctx: &Context) -> Result<Value> {
     let rhs = eval_expr(
         &unary_op
             .arg()
@@ -435,7 +372,7 @@ fn eval_unary_op(unary_op: &UnaryOp, ctx: &Ctx) -> Result<Value> {
             "Operation {:?} is not implemented for thunks",
             unary_op
         )),
-        Value::Lambda(_) => Err(eyre!(
+        Value::Lambda(_, _) => Err(eyre!(
             "Operation {:?} is not implemented for lambdas",
             unary_op
         )),

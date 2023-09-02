@@ -1,3 +1,7 @@
+// SPDX-FileCopyrightText: 2023 Norbert Melzer <timmelzer@gmailcom>
+//
+// SPDX-License-Identifier: MIT
+
 use std::{collections::HashMap, rc::Rc, sync::Arc};
 
 use eyre::{eyre, Result};

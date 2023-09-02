@@ -18,7 +18,7 @@ jobs:
       - uses: DeterminateSystems/nix-installer-action@v4
         with:
           github-token: ${{ github.token }}
-      - run: nix develop -c reuse lint
+      - run: nix shell --inputs-from . nixpkgs#reuse -c reuse lint
 
   formatting:
     runs-on: ubuntu-latest
@@ -27,7 +27,7 @@ jobs:
       - uses: DeterminateSystems/nix-installer-action@v4
         with:
           github-token: ${{ github.token }}
-      - run: nix develop -c cargo fmt -- --check
+      - run: nix shell .#rust -c cargo fmt --check
       - run: nix fmt -- --check .
 
   audit:
@@ -37,7 +37,7 @@ jobs:
       - uses: DeterminateSystems/nix-installer-action@v4
         with:
           github-token: ${{ github.token }}
-      - run: nix develop -c cargo audit
+      - run: nix shell --inputs-from . nixpkgs#cargo-audit .#rust -c cargo audit
 
   deny:
     runs-on: ubuntu-latest
@@ -46,7 +46,7 @@ jobs:
       - uses: DeterminateSystems/nix-installer-action@v4
         with:
           github-token: ${{ github.token }}
-      - run: nix develop -c cargo deny check
+      - run: nix shell --inputs-from . nixpkgs#cargo-deny .#rust -c cargo deny check
 
   test:
     runs-on: ubuntu-latest
@@ -55,7 +55,7 @@ jobs:
       - uses: DeterminateSystems/nix-installer-action@v4
         with:
           github-token: ${{ github.token }}
-      - run: nix develop -c cargo test --release
+      - run: nix shell .#rust -c cargo test --release
 
   build:
     runs-on: ubuntu-latest
@@ -64,4 +64,4 @@ jobs:
       - uses: DeterminateSystems/nix-installer-action@v4
         with:
           github-token: ${{ github.token }}
-      - run: nix develop -c cargo build --release
+      - run: nix shell .#rust -c cargo build --release

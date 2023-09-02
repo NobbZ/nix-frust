@@ -542,6 +542,7 @@ mod tests {
     #[case::attr_set("{a = 1;}.a", Value::Integer(1))]
     #[case::combine("let s = {a = 1;}; in s.a", Value::Integer(1))]
     #[case::or("let s = {a = 1;}; in s.b or false", Value::Bool(false))]
+    #[case::nested_let("let a = let b = 1; in b; in a", Value::Integer(1))]
     fn variables(#[case] code: &str, #[case] expected: Value) {
         assert_eq!(super::code(code).unwrap(), expected);
     }

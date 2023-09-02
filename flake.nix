@@ -33,6 +33,8 @@
 
         formatter = pkgs.alejandra;
 
+        legacyPackages = {inherit rust;};
+
         # legacyPackages.nix-frustPkgsBuilder = pkgs.rustBuilder.makePackageSet {
         #   inherit rustVersion;
         #   packageFun = import "${inputs.self}/Cargo.nix";
@@ -54,7 +56,6 @@
             inherit (pkgs) cargo-nextest cargo-audit cargo-deny cargo-tarpaulin rust-analyzer;
             inherit (pkgs) nil pre-commit reuse;
             inherit (self'.legacyPackages.helpers) testrunner;
-            inherit (inputs'.cargo2nix.packages) cargo2nix;
             inherit rust;
           };
         };

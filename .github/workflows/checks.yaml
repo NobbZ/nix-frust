@@ -1,0 +1,67 @@
+# SPDX-FileCopyrightText: 2023 Norbert Melzer <timmelzer@gmailcom>
+#
+# SPDX-License-Identifier: CC0-1.0
+
+name: checks
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  licenses:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+      - uses: DeterminateSystems/nix-installer-action@v4
+        with:
+          github-token: ${{ github.token }}
+      - run: nix develop -c reuse lint
+
+  formatting:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+      - uses: DeterminateSystems/nix-installer-action@v4
+        with:
+          github-token: ${{ github.token }}
+      - run: nix develop -c cargo fmt -- --check
+      - run: nix fmt -- --check .
+
+  audit:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+      - uses: DeterminateSystems/nix-installer-action@v4
+        with:
+          github-token: ${{ github.token }}
+      - run: nix develop -c cargo audit
+
+  deny:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+      - uses: DeterminateSystems/nix-installer-action@v4
+        with:
+          github-token: ${{ github.token }}
+      - run: nix develop -c cargo deny check
+
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+      - uses: DeterminateSystems/nix-installer-action@v4
+        with:
+          github-token: ${{ github.token }}
+      - run: nix develop -c cargo test --release
+
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+      - uses: DeterminateSystems/nix-installer-action@v4
+        with:
+          github-token: ${{ github.token }}
+      - run: nix develop -c cargo build --release

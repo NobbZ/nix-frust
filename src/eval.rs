@@ -4,8 +4,8 @@ use eyre::{eyre, Result};
 use nil_syntax::{
     ast::{
         Apply, AttrSet, BinaryOp, BinaryOpKind, Expr, HasBindings, HasStringParts, IndentString,
-        Lambda, LetIn, Literal, LiteralKind, Ref, Select, String as StringAst, StringPart, UnaryOp,
-        UnaryOpKind,
+        Lambda, LetIn, List, Literal, LiteralKind, Ref, Select, String as StringAst, StringPart,
+        UnaryOp, UnaryOpKind,
     },
     parser,
 };
@@ -15,12 +15,13 @@ use partialdebug::placeholder::PartialDebug;
 #[derive(PartialDebug, Clone)]
 #[debug_placeholder = "Fun"]
 pub enum Value {
-    Integer(i64),
-    Float(f64),
+    AttrSet(HashMap<String, Value>),
     Bool(bool),
+    Float(f64),
+    Integer(i64),
+    List(Vec<Value>),
     Path(String),
     String(String),
-    AttrSet(HashMap<String, Value>),
     Lambda(Rc<dyn Fn(Value) -> Result<Value>>),
     Thunk(Expr, Ctx),
 }
@@ -34,6 +35,7 @@ impl PartialEq<Value> for Value {
             (Value::Path(lhs), Value::Path(rhs)) => lhs == rhs,
             (Value::String(lhs), Value::String(rhs)) => lhs == rhs,
             (Value::AttrSet(lhs), Value::AttrSet(rhs)) => lhs == rhs,
+            (Value::List(lhs), Value::List(rhs)) => lhs == rhs,
             (Value::Thunk(_, _), Value::Thunk(_, _)) => false,
             _ => false,
         }
@@ -102,8 +104,26 @@ fn eval_expr(expr: &Expr, ctx: &Ctx) -> Result<Value> {
         Expr::String(s) => eval_str(s, ctx),
         Expr::UnaryOp(uo) => eval_unary_op(uo, ctx),
         Expr::Lambda(l) => eval_lambda(l, ctx),
+        Expr::List(l) => eval_list(l, ctx),
         expr => Err(eyre!("expr: {:?}", expr)),
     }
+}
+
+fn eval_list(l: &List, ctx: &Ctx) -> Result<Value> {
+    let capacity_guess = match l.elements().size_hint() {
+        (_lower, Some(upper)) => upper,
+        (lower, None) => lower,
+    };
+
+    let mut result = Vec::with_capacity(capacity_guess);
+
+    for expr in l.elements() {
+        result.push(eval_expr(&expr, ctx)?);
+    }
+
+    result.shrink_to_fit();
+
+    Ok(Value::List(result))
 }
 
 fn eval_lambda(l: &Lambda, ctx: &Ctx) -> Result<Value> {
@@ -403,6 +423,10 @@ fn eval_unary_op(unary_op: &UnaryOp, ctx: &Ctx) -> Result<Value> {
             "Operation {:?} is not implemented for attrsets",
             unary_op
         )),
+        Value::List(_) => Err(eyre!(
+            "Operation {:?} is not implemented for lists",
+            unary_op
+        )),
         Value::Thunk(_, _) => Err(eyre!(
             "Operation {:?} is not implemented for thunks",
             unary_op
@@ -527,6 +551,14 @@ mod tests {
     #[case::fun_def_one_arg("let f = a: 1 + a; in f 1", Value::Integer(2))]
     // #[case::fun_def_two_arg("let f = a: b: b + a; in f 1 1", Value::Integer(1))]
     fn functions(#[case] code: &str, #[case] expected: Value) {
+        assert_eq!(super::code(code).unwrap(), expected);
+    }
+
+    #[rstest]
+    #[case::empty("[]", Value::List(Vec::new()))]
+    #[case::one_element("[1]", Value::List(vec![Value::Integer(1)]))]
+    #[case::two_elements(r#"[1 "2"]"#, Value::List(vec![Value::Integer(1), Value::String("2".into())]))]
+    fn lists(#[case] code: &str, #[case] expected: Value) {
         assert_eq!(super::code(code).unwrap(), expected);
     }
 }

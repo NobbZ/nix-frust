@@ -1,6 +1,6 @@
 // SPDX-FileCopyrightText: 2023 Norbert Melzer <timmelzer@gmailcom>
 //
-// SPDX-License-Identifier: MIT
+// SPDX-License-Identifier: GPL-3.0-or-later
 
 use std::{collections::HashMap, rc::Rc};
 

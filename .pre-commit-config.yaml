@@ -9,8 +9,9 @@ repos:
     rev: v4.4.0
     hooks:
       - id: trailing-whitespace
-        exclude: "^Cargo.nix$"
+        exclude: "^Cargo.nix$|^tests/nix-tests"
       - id: end-of-file-fixer
+        exclude: "^tests/nix-tests"
       - id: check-yaml
       - id: check-toml
       - id: check-added-large-files
@@ -35,7 +36,7 @@ repos:
         name: Alejandra
         language: system
         files: ".*\\.nix$"
-        entry: nix fmt -- --check
+        entry: nix fmt -- --check --exclude tests/nix-tests
 
       - id: cargo-audit
         name: Cargo Audit

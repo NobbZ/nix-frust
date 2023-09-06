@@ -5,7 +5,7 @@
 use std::{collections::HashMap, fmt::Debug, rc::Rc};
 
 use eyre::Result;
-use nil_syntax::ast::{Expr, Lambda};
+use rnix::ast::{Expr, Lambda};
 
 use crate::eval::context::Context;
 
@@ -73,7 +73,7 @@ impl Debug for LambdaDebug<'_> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         let code = self
             .0
-            .colon_token()
+            .token_colon()
             .and_then(|t| t.parent())
             .map(|p| p.text())
             .ok_or(std::fmt::Error)?;

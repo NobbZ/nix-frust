@@ -7,6 +7,7 @@ use std::env::args;
 use tracing::Level;
 use tracing_subscriber::{fmt::format::FmtSpan, FmtSubscriber};
 
+// mod compiler;
 mod eval;
 
 fn main() {

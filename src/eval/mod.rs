@@ -5,7 +5,7 @@
 use std::{collections::HashMap, rc::Rc};
 
 use eyre::{eyre, Result};
-use rnix::{ast, parser};
+use rnix::ast;
 use rowan::ast::AstNode;
 use tracing::{field, Span};
 
@@ -15,6 +15,7 @@ pub(crate) mod value;
 use crate::eval::context::Context;
 use crate::eval::value::Value;
 
+#[allow(dead_code)]
 pub fn code(code: &str) -> Result<Value> {
     let code = code.trim();
 
@@ -111,30 +112,33 @@ fn eval_lambda(l: &ast::Lambda, ctx: &Context) -> Result<Value> {
 fn eval_apply(f: &ast::Apply, ctx: &Context) -> Result<Value> {
     let apply_code = "<->";
 
-    tracing::debug_span!("eval_apply", code = apply_code).in_scope(|| {
-        let fun = f.lambda().ok_or_else(|| eyre!("Missing function"))?;
+    tracing::debug_span!("eval_apply", code = apply_code).in_scope(
+        || -> std::result::Result<Value, eyre::ErrReport> {
+            let fun = f.lambda().ok_or_else(|| eyre!("Missing function"))?;
 
-        let callable = match fun {
-            ast::Expr::Ident(ref rf) => {
-                let name = rf.ident_token().ok_or_else(|| eyre!("Missing token"))?;
-                let func = ctx.resolve(name.text())?;
-                match func {
-                    Value::Thunk(expr, ctx) => eval_expr(&expr, &ctx),
-                    lambda @ Value::Lambda(_, _) => Ok(lambda),
-                    _ => Err(eyre!("Function must be a thunk or attrset")),
+            let callable = match fun {
+                ast::Expr::Ident(ref rf) => {
+                    let name = rf.ident_token().ok_or_else(|| eyre!("Missing token"))?;
+                    let func = ctx.resolve(name.text())?;
+                    match func {
+                        Value::Thunk(expr, ctx) => eval_expr(&expr, &ctx),
+                        lambda @ Value::Lambda(_, _) => Ok(lambda),
+                        _ => Err(eyre!("Function must be a thunk or attrset")),
+                    }
                 }
-            }
-            expr => todo!("eval fun: expr {expr:?}"),
-        }?;
+                expr => todo!("eval fun: expr {expr:?}"),
+            }?;
 
-        match dbg!(&callable) {
-            Value::Lambda(l, _) => {
-                let arg = eval_expr(&f.argument().ok_or_else(|| eyre!("Missing argument"))?, ctx)?;
-                l(arg)
+            match dbg!(&callable) {
+                Value::Lambda(l, _) => {
+                    let arg =
+                        eval_expr(&f.argument().ok_or_else(|| eyre!("Missing argument"))?, ctx)?;
+                    l(arg)
+                }
+                _ => todo!("eval apply: callable {callable:?}"),
             }
-            _ => todo!("eval apply: callable {callable:?}"),
-        }
-    })
+        },
+    )
 
     // Err(eyre!("apply not implemented yet"))
 }
@@ -179,7 +183,7 @@ fn eval_select(s: &ast::Select, ctx: &Context) -> Result<Value> {
     })
 }
 
-fn eval_let_in(li: &ast::LetIn, ctx: &Context) -> Result<Value> {
+fn eval_let_in(li: &ast::LetIn, _ctx: &Context) -> Result<Value> {
     let let_in_code = li
         .let_token()
         .and_then(|t| t.parent())
@@ -235,7 +239,7 @@ fn eval_let_in(li: &ast::LetIn, ctx: &Context) -> Result<Value> {
     })
 }
 
-fn eval_attr_set(set: &ast::AttrSet, ctx: &Context) -> Result<Value> {
+fn eval_attr_set(set: &ast::AttrSet, _ctx: &Context) -> Result<Value> {
     let attr_set_code = set
         .l_curly_token()
         .and_then(|t| t.parent())
@@ -474,7 +478,7 @@ mod tests {
     use pretty_assertions::assert_eq;
     use rstest::rstest;
 
-    const INDENT_STRING: &str = r#"''
+    const _INDENT_STRING: &str = r#"''
     foo
     bar
     ''"#;

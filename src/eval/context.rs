@@ -13,12 +13,14 @@ use crate::eval::value::Value;
 pub struct Context(pub(crate) Arc<Mutex<InnerContext>>);
 
 #[derive(Default, Debug)]
+#[allow(dead_code)]
 pub struct InnerContext {
     pub(crate) values: HashMap<String, Value>,
     #[allow(dead_code)]
     pub(crate) parent: Option<Context>,
 }
 
+#[allow(dead_code)]
 impl Context {
     pub(crate) fn new_with_parent(parent: &Self) -> Self {
         Self(Arc::new(Mutex::new(InnerContext {

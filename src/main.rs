@@ -7,7 +7,9 @@ use std::env::args;
 use tracing::Level;
 use tracing_subscriber::{fmt::format::FmtSpan, FmtSubscriber};
 
-// mod compiler;
+use crate::compiler::Compiler;
+
+mod compiler;
 mod eval;
 
 fn main() {
@@ -18,6 +20,15 @@ fn main() {
 
     let code = args().nth(1).unwrap();
 
-    let value = eval::code(&code);
-    tracing::info!(?value, "got result");
+    // let value = eval::code(&code);
+    let mut compiler = Compiler::new(&code, None);
+    let root_slot = compiler.scope_mut().declare_phantom(false);
+    compiler.compile(compiler.expr.clone(), root_slot);
+    // tracing::info!(?value, "got result");
+    dbg!(&compiler);
+
+    tracing::debug!(warnings = ?compiler.warnings, "the warnings");
+    tracing::debug!(errors = ?compiler.errors, "the errors");
+
+    tracing::info!(?compiler, "got result");
 }

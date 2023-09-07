@@ -10,6 +10,7 @@ use rnix::ast::{Expr, Lambda};
 use crate::eval::context::Context;
 
 #[derive(Clone)]
+#[allow(dead_code)]
 pub enum Value {
     AttrSet(HashMap<String, Value>),
     Bool(bool),

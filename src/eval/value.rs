@@ -8,6 +8,7 @@ use eyre::Result;
 use rnix::ast::{Expr, Lambda};
 
 use crate::eval::context::Context;
+use crate::values::{Closure, Thunk};
 
 #[derive(Clone)]
 #[allow(dead_code)]
@@ -20,7 +21,8 @@ pub enum Value {
     Path(String),
     String(String),
     Lambda(Rc<dyn Fn(Value) -> Result<Value>>, Lambda),
-    Thunk(Expr, Context),
+    Thunk(Thunk),
+    Closure(Closure),
 }
 
 impl PartialEq<Value> for Value {

@@ -11,6 +11,8 @@ use crate::compiler::Compiler;
 
 mod compiler;
 mod eval;
+mod upvalues;
+mod values;
 
 fn main() {
     FmtSubscriber::builder()
@@ -22,6 +24,7 @@ fn main() {
 
     // let value = eval::code(&code);
     let mut compiler = Compiler::new(&code, None);
+    let root_span = compiler.to_span(compiler.expr);
     let root_slot = compiler.scope_mut().declare_phantom(false);
     compiler.compile(compiler.expr.clone(), root_slot);
     // tracing::info!(?value, "got result");

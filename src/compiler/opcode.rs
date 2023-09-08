@@ -11,9 +11,17 @@ use crate::compiler::chunk::ConstIdx;
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct UpvalueIdx(pub usize);
 
+/// Provided count for an instruction (could represent e.g. a number
+/// of elements).
+#[repr(transparent)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct Count(pub usize);
+
 #[derive(Debug)]
 pub(crate) enum OpCode {
     Const(ConstIdx),
     Force,
     Return,
+    CoerceToString,
+    Interpolate(Count),
 }

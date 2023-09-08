@@ -36,8 +36,7 @@ pub fn code(code: &str) -> Result<Value> {
         })?
     };
 
-    tracing::debug_span!(parent: &code_span, "evaluating code")
-        .in_scope(|| eval_expr(&expr, &Default::default()))
+    tracing::debug_span!(parent: &code_span, "evaluating code").in_scope(|| eval_expr(&expr, &Default::default()))
 }
 
 fn eval_expr(expr: &ast::Expr, ctx: &Context) -> Result<Value> {
@@ -83,9 +82,7 @@ fn eval_lambda(l: &ast::Lambda, ctx: &Context) -> Result<Value> {
         let ctx = ctx.clone();
 
         let arg = match l.param().unwrap() {
-            ast::Param::IdentParam(i) => {
-                i.ident().unwrap().ident_token().unwrap().text().to_string()
-            }
+            ast::Param::IdentParam(i) => i.ident().unwrap().ident_token().unwrap().text().to_string(),
             ast::Param::Pattern(_) => todo!(),
         };
 
@@ -112,33 +109,30 @@ fn eval_lambda(l: &ast::Lambda, ctx: &Context) -> Result<Value> {
 fn eval_apply(f: &ast::Apply, ctx: &Context) -> Result<Value> {
     let apply_code = "<->";
 
-    tracing::debug_span!("eval_apply", code = apply_code).in_scope(
-        || -> std::result::Result<Value, eyre::ErrReport> {
-            let fun = f.lambda().ok_or_else(|| eyre!("Missing function"))?;
+    tracing::debug_span!("eval_apply", code = apply_code).in_scope(|| -> std::result::Result<Value, eyre::ErrReport> {
+        let fun = f.lambda().ok_or_else(|| eyre!("Missing function"))?;
 
-            let callable = match fun {
-                ast::Expr::Ident(ref rf) => {
-                    let name = rf.ident_token().ok_or_else(|| eyre!("Missing token"))?;
-                    let func = ctx.resolve(name.text())?;
-                    match func {
-                        Value::Thunk(expr, ctx) => eval_expr(&expr, &ctx),
-                        lambda @ Value::Lambda(_, _) => Ok(lambda),
-                        _ => Err(eyre!("Function must be a thunk or attrset")),
-                    }
+        let callable = match fun {
+            ast::Expr::Ident(ref rf) => {
+                let name = rf.ident_token().ok_or_else(|| eyre!("Missing token"))?;
+                let func = ctx.resolve(name.text())?;
+                match func {
+                    Value::Thunk(expr, ctx) => eval_expr(&expr, &ctx),
+                    lambda @ Value::Lambda(_, _) => Ok(lambda),
+                    _ => Err(eyre!("Function must be a thunk or attrset")),
                 }
-                expr => todo!("eval fun: expr {expr:?}"),
-            }?;
-
-            match dbg!(&callable) {
-                Value::Lambda(l, _) => {
-                    let arg =
-                        eval_expr(&f.argument().ok_or_else(|| eyre!("Missing argument"))?, ctx)?;
-                    l(arg)
-                }
-                _ => todo!("eval apply: callable {callable:?}"),
             }
-        },
-    )
+            expr => todo!("eval fun: expr {expr:?}"),
+        }?;
+
+        match dbg!(&callable) {
+            Value::Lambda(l, _) => {
+                let arg = eval_expr(&f.argument().ok_or_else(|| eyre!("Missing argument"))?, ctx)?;
+                l(arg)
+            }
+            _ => todo!("eval apply: callable {callable:?}"),
+        }
+    })
 
     // Err(eyre!("apply not implemented yet"))
 }

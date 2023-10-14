@@ -6,6 +6,7 @@ use chumsky::prelude::*;
 
 mod float;
 mod integer;
+mod url;
 
 #[derive(Clone, PartialEq, Debug)]
 pub enum Expr {
@@ -14,12 +15,15 @@ pub enum Expr {
     Neg(Box<Self>),
     Parens(Box<Self>),
     List(Vec<Self>),
+
+    // TODO: Add deprecation mechanism
+    Url(String),
 }
 
 pub fn parser<'a>() -> impl Parser<'a, &'a str, Expr, extra::Err<Rich<'a, char>>> {
     recursive(|expr| {
         choice((
-            choice((float::float(), integer::integer())),
+            choice((float::float(), integer::integer(), url::url())),
             expr.clone()
                 .delimited_by(just('('), just(')'))
                 .map(|expr| Expr::Parens(Box::new(expr))),
@@ -28,6 +32,7 @@ pub fn parser<'a>() -> impl Parser<'a, &'a str, Expr, extra::Err<Rich<'a, char>>
                 .delimited_by(just('['), just(']'))
                 .map(Expr::List),
         ))
+        .padded()
     })
 }
 
@@ -69,6 +74,12 @@ mod tests {
         };
     }
 
+    macro_rules! url {
+        ($e:expr) => {
+            Expr::Url($e.to_string())
+        };
+    }
+
     #[rstest]
     #[case::pos_int("1", int!(1))]
     #[case::pos_flt("1.0", flt!(1.0))]
@@ -81,6 +92,7 @@ mod tests {
     #[case::list_one("[1]", list!(int!(1)))]
     #[case::list_two("[1 2]", list!(int!(1), int!(2)))]
     #[case::list_het("[1 2.1]", list!(int!(1), flt!(2.1)))]
+    #[case::url("[ x:x ]", list!(url!("x:x")))]
     fn numbers(#[case] code: &str, #[case] expected: Expr) {
         let parse_result = parser().parse(code);
         let expr = parse_result.output();

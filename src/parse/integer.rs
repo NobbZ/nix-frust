@@ -17,7 +17,7 @@ pub fn integer<'a>() -> impl Parser<'a, &'a str, Expr, extra::Err<Rich<'a, char>
         .then(int)
         .map(|(negs, int)| negs.iter().fold(int, |expr, _| Expr::Neg(Box::new(expr))));
 
-    unary.then_ignore(end())
+    unary
 }
 
 #[cfg(test)]

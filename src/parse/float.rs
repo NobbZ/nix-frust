@@ -20,7 +20,7 @@ struct Flt(Option<Sign>, String, String, Option<(Option<Sign>, String)>);
 
 // TODO: This clippy lint should be fixed eventually
 #[allow(clippy::result_large_err)]
-fn convert_to_expr<'a>(f: Flt, span: Range<usize>) -> Result<Expr, Simple<'a, char>> {
+fn convert_to_expr<'a>(f: Flt, span: SimpleSpan) -> Result<Expr, Rich<'a, char>> {
     let s = match f.0 {
         Some(Sign::Neg) => "-",
         _ => "",
@@ -47,11 +47,11 @@ fn convert_to_expr<'a>(f: Flt, span: Range<usize>) -> Result<Expr, Simple<'a, ch
 
     match f.parse::<f64>() {
         Ok(n) => Ok(Expr::Flt(n)),
-        Err(_) => Err(Simple::custom(span, format!("Invalid float: {}", f))),
+        Err(_) => Err(Rich::custom(span, format!("Invalid float: {}", f))),
     }
 }
 
-fn sign<'a>() -> impl Parser<'a, &'a str, Sign, extra::Err<Simple<'a, char>>> + Clone {
+fn sign<'a>() -> impl Parser<'a, &'a str, Sign, extra::Err<Rich<'a, char>>> + Clone {
     one_of("+-").map(|s| match s {
         '+' => Sign::Pos,
         '-' => Sign::Neg,
@@ -59,28 +59,28 @@ fn sign<'a>() -> impl Parser<'a, &'a str, Sign, extra::Err<Simple<'a, char>>> + 
     })
 }
 
-fn marker<'a>() -> impl Parser<'a, &'a str, char, extra::Err<Simple<'a, char>>> + Clone {
+fn marker<'a>() -> impl Parser<'a, &'a str, char, extra::Err<Rich<'a, char>>> + Clone {
     one_of("eE")
 }
 
 fn digits<'a>(
     min_length: usize,
-) -> impl Parser<'a, char, String, extra::Err<Simple<'a, char>>> + Clone {
+) -> impl Parser<'a, &'a str, String, extra::Err<Rich<'a, char>>> + Clone {
     one_of("1234567890")
         .repeated()
         .at_least(min_length)
-        .map(|s| s.into_iter().collect())
+        .collect()
 }
 
 fn exponent<'a>(
-) -> impl Parser<'a, &'a str, (Option<Sign>, String), extra::Err<Simple<'a, char>>> + Clone {
+) -> impl Parser<'a, &'a str, (Option<Sign>, String), extra::Err<Rich<'a, char>>> + Clone {
     marker().then(sign().or_not()).then(digits(0)).map(|e| {
         let ((_, sign), digits) = e;
         (sign, digits)
     })
 }
 
-fn variant_one<'a>() -> impl Parser<'a, char, Flt, extra::Err<Simple<'a, char>>> + Clone {
+fn variant_one<'a>() -> impl Parser<'a, &'a str, Flt, extra::Err<Rich<'a, char>>> + Clone {
     sign()
         .or_not()
         .then(digits(0))
@@ -93,7 +93,7 @@ fn variant_one<'a>() -> impl Parser<'a, char, Flt, extra::Err<Simple<'a, char>>>
         })
 }
 
-fn variant_two<'a>() -> impl Parser<'a, char, Flt, extra::Err<Simple<'a, char>>> + Clone {
+fn variant_two<'a>() -> impl Parser<'a, &'a str, Flt, extra::Err<Rich<'a, char>>> + Clone {
     sign()
         .or_not()
         .then(digits(1))
@@ -105,12 +105,8 @@ fn variant_two<'a>() -> impl Parser<'a, char, Flt, extra::Err<Simple<'a, char>>>
         })
 }
 
-pub fn float<'a>() -> impl Parser<'a, char, Expr, extra::Err<Simple<'a, char>>> + Clone {
-    variant_one()
-        .or(variant_two())
-        .try_map(convert_to_expr)
-        .padded()
-        .then_ignore(end())
+pub fn float<'a>() -> impl Parser<'a, &'a str, Expr, extra::Err<Rich<'a, char>>> + Clone {
+    choice((variant_one(), variant_two())).try_map(convert_to_expr)
 }
 
 #[cfg(test)]
@@ -130,14 +126,14 @@ mod tests {
     #[case::pi("3.141592653589793e0", Expr::Flt(3.141592653589793e0))]
     #[case::log_10_2("3.010299957e-1", Expr::Flt(3.010299957e-1))]
     fn numbers(#[case] code: &str, #[case] expected: Expr) {
-        let result = float().parse(code).unwrap();
+        let result = float().parse(&code).unwrap();
         assert_eq!(result, expected);
     }
 
     #[rstest]
     #[case::integer("1")]
     fn errors(#[case] code: &str) {
-        let result = float().parse(code);
+        let result = float().parse(code).into_result();
         assert!(result.is_err());
     }
 }

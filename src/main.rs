@@ -4,10 +4,12 @@
 
 use std::env::args;
 
+use chumsky::prelude::*;
 use tracing::Level;
 use tracing_subscriber::{fmt::format::FmtSpan, FmtSubscriber};
 
-mod eval;
+mod extensions;
+mod parse;
 
 fn main() {
     FmtSubscriber::builder()
@@ -17,6 +19,18 @@ fn main() {
 
     let code = args().nth(1).unwrap();
 
-    let value = eval::code(&code);
-    tracing::info!(?value, "got result");
+    let ast = parse::parser().then_ignore(end()).parse(code);
+
+    match ast {
+        Ok(ast) => {
+            tracing::info!(?ast, "got result");
+        }
+        Err(errors) => {
+            for error in errors {
+                let span = error.span();
+                println!("{}-{}: {}", span.start(), span.end(), error);
+                // tracing::error!(?err, "got error");
+            }
+        }
+    }
 }

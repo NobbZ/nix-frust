@@ -9,5 +9,5 @@ let {
     x = 789;
     inherit (as) x;
   };
-  
+
 }

@@ -35,6 +35,7 @@ repos:
         name: Alejandra
         language: system
         files: ".*\\.nix$"
+        exclude: "tests/nix-tests/.*\\.nix$"
         entry: nix fmt -- --check
 
       - id: cargo-audit

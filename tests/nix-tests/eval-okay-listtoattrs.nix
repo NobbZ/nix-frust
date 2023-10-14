@@ -1,7 +1,7 @@
 # this test shows how to use listToAttrs and that evaluation is still lazy (throw isn't called)
 with import ./lib.nix;
 
-let 
+let
   asi = name: value : { inherit name value; };
   list = [ ( asi "a" "A" ) ( asi "b" "B" ) ];
   a = builtins.listToAttrs list;

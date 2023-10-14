@@ -1,6 +1,6 @@
 let
 
-  config = 
+  config =
     {
       services.sshd.enable = true;
       services.sshd.port = 22;

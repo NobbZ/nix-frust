@@ -1,6 +1,6 @@
 let
 
-  f = z: 
+  f = z:
 
     let
       x = "foo";

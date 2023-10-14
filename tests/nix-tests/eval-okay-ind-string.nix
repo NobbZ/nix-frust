@@ -19,7 +19,7 @@ let
   s2 = ''  If the string starts with whitespace
     followed by a newline, it's stripped, but
     that's not the case here. Two spaces are
-    stripped because of the "  " at the start. 
+    stripped because of the "  " at the start.
   '';
 
   s3 = ''
@@ -40,7 +40,7 @@ let
     If you want them, use anti-quotations: ${"''"}, ${"\${"}.
   '';
 
-  s6 = ''  
+  s6 = ''
     Tabs are not interpreted as whitespace (since we can't guess
     what tab settings are intended), so don't use them.
  	This line starts with a space and a tab, so only one
@@ -75,7 +75,7 @@ let
     start on network-interfaces
 
     start script
-    
+
       rm -f /var/run/opengl-driver
       ${if true
         then "ln -sf 123 /var/run/opengl-driver"
@@ -85,7 +85,7 @@ let
       }
 
       rm -f /var/log/slim.log
-       
+
     end script
 
     env SLIM_CFGFILE=${"abc"}
@@ -99,7 +99,7 @@ let
     else if true
       then "env XORG_DRI_DRIVER_PATH=${"mesa"}/lib/modules/dri"
       else ""
-    } 
+    }
 
     exec ${"slim"}/bin/slim
   '';
@@ -122,7 +122,7 @@ let
     cut -d $'\t' -f 1
   '';
 
-  # Accept dollars at end of strings 
+  # Accept dollars at end of strings
   s17 = ''ending dollar $'' + ''$'' + "\n";
 
 in s1 + s2 + s3 + s4 + s5 + s6 + s7 + s8 + s9 + s10 + s11 + s12 + s13 + s14 + s15 + s16 + s17

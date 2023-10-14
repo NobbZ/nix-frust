@@ -11,13 +11,11 @@ pub fn integer<'a>() -> impl Parser<'a, &'a str, Expr, extra::Err<Rich<'a, char>
         .map(|s| Expr::Int(s.parse().unwrap()))
         .padded();
 
-    let unary = just('-')
+    just('-')
         .repeated()
         .collect::<Vec<_>>()
         .then(int)
-        .map(|(negs, int)| negs.iter().fold(int, |expr, _| Expr::Neg(Box::new(expr))));
-
-    unary
+        .map(|(negs, int)| negs.iter().fold(int, |expr, _| Expr::Neg(Box::new(expr))))
 }
 
 #[cfg(test)]

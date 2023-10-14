@@ -2,8 +2,6 @@
 //
 // SPDX-License-Identifier: GPL-3.0-or-later
 
-use std::ops::Range;
-
 use chumsky::prelude::*;
 
 use super::Expr;
@@ -126,7 +124,7 @@ mod tests {
     #[case::pi("3.141592653589793e0", Expr::Flt(3.141592653589793e0))]
     #[case::log_10_2("3.010299957e-1", Expr::Flt(3.010299957e-1))]
     fn numbers(#[case] code: &str, #[case] expected: Expr) {
-        let result = float().parse(&code).unwrap();
+        let result = float().parse(code).unwrap();
         assert_eq!(result, expected);
     }
 

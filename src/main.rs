@@ -19,7 +19,7 @@ fn main() {
 
     let code = args().nth(1).unwrap();
 
-    let ast = parse::parser().then_ignore(end()).parse(code);
+    let ast = parse::parser().parse(&code).into_result();
 
     match ast {
         Ok(ast) => {

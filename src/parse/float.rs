@@ -20,7 +20,7 @@ struct Flt(Option<Sign>, String, String, Option<(Option<Sign>, String)>);
 
 // TODO: This clippy lint should be fixed eventually
 #[allow(clippy::result_large_err)]
-fn convert_to_expr(f: Flt, span: Range<usize>) -> Result<Expr, Simple<char>> {
+fn convert_to_expr<'a>(f: Flt, span: Range<usize>) -> Result<Expr, Simple<'a, char>> {
     let s = match f.0 {
         Some(Sign::Neg) => "-",
         _ => "",
@@ -51,7 +51,7 @@ fn convert_to_expr(f: Flt, span: Range<usize>) -> Result<Expr, Simple<char>> {
     }
 }
 
-fn sign() -> impl Parser<char, Sign, Error = Simple<char>> + Clone {
+fn sign<'a>() -> impl Parser<'a, &'a str, Sign, extra::Err<Simple<'a, char>>> + Clone {
     one_of("+-").map(|s| match s {
         '+' => Sign::Pos,
         '-' => Sign::Neg,
@@ -59,25 +59,28 @@ fn sign() -> impl Parser<char, Sign, Error = Simple<char>> + Clone {
     })
 }
 
-fn marker() -> impl Parser<char, char, Error = Simple<char>> + Clone {
+fn marker<'a>() -> impl Parser<'a, &'a str, char, extra::Err<Simple<'a, char>>> + Clone {
     one_of("eE")
 }
 
-fn digits(min_length: usize) -> impl Parser<char, String, Error = Simple<char>> + Clone {
+fn digits<'a>(
+    min_length: usize,
+) -> impl Parser<'a, char, String, extra::Err<Simple<'a, char>>> + Clone {
     one_of("1234567890")
         .repeated()
         .at_least(min_length)
         .map(|s| s.into_iter().collect())
 }
 
-fn exponent() -> impl Parser<char, (Option<Sign>, String), Error = Simple<char>> + Clone {
+fn exponent<'a>(
+) -> impl Parser<'a, &'a str, (Option<Sign>, String), extra::Err<Simple<'a, char>>> + Clone {
     marker().then(sign().or_not()).then(digits(0)).map(|e| {
         let ((_, sign), digits) = e;
         (sign, digits)
     })
 }
 
-fn variant_one() -> impl Parser<char, Flt, Error = Simple<char>> + Clone {
+fn variant_one<'a>() -> impl Parser<'a, char, Flt, extra::Err<Simple<'a, char>>> + Clone {
     sign()
         .or_not()
         .then(digits(0))
@@ -90,7 +93,7 @@ fn variant_one() -> impl Parser<char, Flt, Error = Simple<char>> + Clone {
         })
 }
 
-fn variant_two() -> impl Parser<char, Flt, Error = Simple<char>> + Clone {
+fn variant_two<'a>() -> impl Parser<'a, char, Flt, extra::Err<Simple<'a, char>>> + Clone {
     sign()
         .or_not()
         .then(digits(1))
@@ -102,7 +105,7 @@ fn variant_two() -> impl Parser<char, Flt, Error = Simple<char>> + Clone {
         })
 }
 
-pub fn float() -> impl Parser<char, Expr, Error = Simple<char>> + Clone {
+pub fn float<'a>() -> impl Parser<'a, char, Expr, extra::Err<Simple<'a, char>>> + Clone {
     variant_one()
         .or(variant_two())
         .try_map(convert_to_expr)

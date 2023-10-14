@@ -6,17 +6,16 @@ use chumsky::prelude::*;
 
 use super::Expr;
 
-pub fn integer() -> impl Parser<char, Expr, Error = Simple<char>> + Clone {
-    let int = text::int(10)
-        .map(|s: String| Expr::Int(s.parse().unwrap()))
+pub fn integer<'a>() -> impl Parser<'a, &'a str, Expr, extra::Err<Rich<'a, char>>> + Clone {
+    let int = text::int::<'a, &'a str, _, _>(10)
+        .map(|s| Expr::Int(s.parse().unwrap()))
         .padded();
 
-    let op = |c| just(c).padded();
-
-    let unary = op('-')
+    let unary = just('-')
         .repeated()
+        .collect::<Vec<_>>()
         .then(int)
-        .foldr(|_op, rhs| Expr::Neg(Box::new(rhs)));
+        .map(|(negs, int)| negs.iter().fold(int, |expr, _| Expr::Neg(Box::new(expr))));
 
     unary.then_ignore(end())
 }

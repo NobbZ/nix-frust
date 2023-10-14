@@ -24,3 +24,4 @@ tracing-subscriber = "0.3.17"
 [dev-dependencies]
 pretty_assertions = "1.4.0"
 rstest = "0.18.2"
+test-generator = "0.3.1"

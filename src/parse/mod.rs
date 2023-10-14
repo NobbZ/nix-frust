@@ -37,6 +37,7 @@ mod tests {
 
     use pretty_assertions::assert_eq;
     use rstest::rstest;
+    use test_generator::test_resources;
 
     macro_rules! int {
         ($n:expr) => {
@@ -86,5 +87,15 @@ mod tests {
         let errors: Vec<_> = parse_result.errors().collect();
         dbg!(&errors);
         assert_eq!(expr, Some(&expected));
+    }
+
+    #[test_resources("tests/nix-tests/parse-okay-*.nix")]
+    fn parse_okay(filename: &str) {
+        let code = std::fs::read_to_string(filename).expect("failed to read test file");
+
+        let (output, errors) = parser().parse(&code).into_output_errors();
+
+        assert_eq!(errors, vec![]);
+        assert_ne!(output, None);
     }
 }

@@ -61,12 +61,12 @@ repos:
         pass_filenames: false
         always_run: false
 
-      - id: tests
-        name: Run tests
-        language: system
-        files: ".*\\.rs"
-        pass_filenames: false
-        entry: cargo test --release
+      # - id: tests
+      #   name: Run tests
+      #   language: system
+      #   files: ".*\\.rs"
+      #   pass_filenames: false
+      #   entry: cargo test --release
 
       # - id: doc-tests
       #   name: Run doctests

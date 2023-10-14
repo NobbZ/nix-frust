@@ -18,16 +18,16 @@ pub enum Expr {
 
 pub fn parser<'a>() -> impl Parser<'a, &'a str, Expr, extra::Err<Rich<'a, char>>> {
     recursive(|expr| {
-        choice((float::float(), integer::integer()))
-            .or(expr
-                .clone()
+        choice((
+            choice((float::float(), integer::integer())),
+            expr.clone()
                 .delimited_by(just('('), just(')'))
-                .map(|expr| Expr::Parens(Box::new(expr))))
-            .or(expr
-                .repeated()
+                .map(|expr| Expr::Parens(Box::new(expr))),
+            expr.repeated()
                 .collect()
                 .delimited_by(just('['), just(']'))
-                .map(Expr::List))
+                .map(Expr::List),
+        ))
     })
 }
 

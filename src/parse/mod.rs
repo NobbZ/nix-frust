@@ -30,13 +30,38 @@ mod tests {
     use pretty_assertions::assert_eq;
     use rstest::rstest;
 
+    macro_rules! int {
+        ($n:expr) => {
+            Expr::Int($n)
+        };
+    }
+
+    macro_rules! flt {
+        ($n:expr) => {
+            Expr::Flt($n)
+        };
+    }
+
+    macro_rules! neg {
+        ($e:expr) => {
+            Expr::Neg(Box::new($e))
+        };
+    }
+
+    macro_rules! parens {
+        ($e:expr) => {
+            Expr::Parens(Box::new($e))
+        };
+    }
+
     #[rstest]
-    #[case::post_int("1", Expr::Int(1))]
-    #[case("1.0", Expr::Flt(1.0))]
-    #[case::neg_int("-1", Expr::Neg(Box::new(Expr::Int(1))))]
-    #[case("-1.0", Expr::Flt(-1.0))]
-    #[case::par_int("(1)", Expr::Parens(Box::new(Expr::Int(1))))]
-    #[case("(1.1)", Expr::Parens(Box::new(Expr::Flt(1.1))))]
+    #[case::post_int("1", int!(1))]
+    #[case("1.0", flt!(1.0))]
+    #[case::neg_int("-1", neg!(int!(1)))]
+    #[case("-1.0", flt!(-1.0))]
+    #[case::par_int("(1)", parens!(int!(1)))]
+    #[case::par_neg_int("(-11)", parens!(neg!(int!(11))))]
+    #[case("(1.1)", parens!(flt!(1.1)))]
     fn numbers(#[case] code: &str, #[case] expected: Expr) {
         let parse_result = parser().parse(code);
         let expr = parse_result.output();

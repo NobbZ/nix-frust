@@ -4,9 +4,12 @@
 
 use chumsky::prelude::*;
 
+mod attr_set;
 mod float;
 mod integer;
 mod url;
+
+use crate::parse::attr_set::SetEntry;
 
 #[derive(Clone, PartialEq, Debug)]
 pub enum Expr {
@@ -16,14 +19,21 @@ pub enum Expr {
     Parens(Box<Self>),
     List(Vec<Self>),
 
+    AttrSet(Vec<SetEntry>),
+
     // TODO: Add deprecation mechanism
     Url(String),
 }
 
-pub fn parser<'a>() -> impl Parser<'a, &'a str, Expr, extra::Err<Rich<'a, char>>> {
+pub fn parser<'a>() -> impl Parser<'a, &'a str, Expr, extra::Err<Rich<'a, char>>> + Clone {
     recursive(|expr| {
         choice((
-            choice((float::float(), integer::integer(), url::url())),
+            choice((
+                float::float(),
+                integer::integer(),
+                url::url(),
+                attr_set::attr_set(expr.clone()),
+            )),
             expr.clone()
                 .delimited_by(just('('), just(')'))
                 .map(|expr| Expr::Parens(Box::new(expr))),

@@ -2,9 +2,9 @@
 //
 // SPDX-License-Identifier: GPL-3.0-or-later
 
-use std::{env::args, ops::Range, path::Path};
+use std::{env::args, ops::Range};
 
-use ariadne::{Color, ColorGenerator, Fmt, Label, Report, ReportKind, Source};
+use ariadne::{ColorGenerator, Label, Report, ReportKind, Source};
 use chumsky::prelude::*;
 use tracing::Level;
 use tracing_subscriber::{fmt::format::FmtSpan, FmtSubscriber};
@@ -29,10 +29,6 @@ fn main() {
         Err(errors) => {
             let mut colors = ColorGenerator::new();
 
-            let a = colors.next();
-            let b = colors.next();
-            let out = Color::Fixed(81);
-
             for error in errors {
                 let span = error.span();
                 Report::<Range<usize>>::build(ReportKind::Error, (), 0)
@@ -40,7 +36,7 @@ fn main() {
                     .with_label(
                         Label::new(span.into_range())
                             .with_message(error.to_string())
-                            .with_color(a),
+                            .with_color(colors.next()),
                     )
                     .finish()
                     .print(Source::from(&code))

@@ -6,6 +6,7 @@ use chumsky::prelude::*;
 
 mod attr_set;
 mod float;
+mod ident;
 mod integer;
 mod url;
 
@@ -18,6 +19,8 @@ pub enum Expr {
     Neg(Box<Self>),
     Parens(Box<Self>),
     List(Vec<Self>),
+
+    Ident(ident::Ident),
 
     AttrSet(Vec<SetEntry>),
 
@@ -32,6 +35,7 @@ pub fn parser<'a>() -> impl Parser<'a, &'a str, Expr, extra::Err<Rich<'a, char>>
                 float::float(),
                 integer::integer(),
                 url::url(),
+                ident::ident(),
                 attr_set::attr_set(expr.clone()),
             )),
             expr.clone()

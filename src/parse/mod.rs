@@ -6,12 +6,14 @@ use chumsky::prelude::*;
 
 mod attr_set;
 mod float;
+mod fun_def;
 mod ident;
 mod integer;
 mod let_in;
 mod url;
 
 use crate::parse::attr_set::SetEntry;
+use crate::parse::fun_def::FunHead;
 use crate::parse::let_in::Binding;
 
 #[derive(Clone, PartialEq, Debug)]
@@ -23,6 +25,8 @@ pub enum Expr {
     List(Vec<Self>),
 
     Ident(ident::Ident),
+
+    FunDef(FunHead, Box<Self>),
 
     AttrSet(Vec<SetEntry>),
     LetIn(Vec<Binding>, Box<Self>),
@@ -39,6 +43,7 @@ pub fn parser<'a>() -> impl Parser<'a, &'a str, Expr, extra::Err<Rich<'a, char>>
                 integer::integer(),
                 url::url(),
                 let_in::let_in(expr.clone()),
+                fun_def::fun_def(expr.clone()),
                 attr_set::attr_set(expr.clone()),
                 ident::ident(),
             )),

@@ -8,9 +8,11 @@ mod attr_set;
 mod float;
 mod ident;
 mod integer;
+mod let_in;
 mod url;
 
 use crate::parse::attr_set::SetEntry;
+use crate::parse::let_in::Binding;
 
 #[derive(Clone, PartialEq, Debug)]
 pub enum Expr {
@@ -23,6 +25,7 @@ pub enum Expr {
     Ident(ident::Ident),
 
     AttrSet(Vec<SetEntry>),
+    LetIn(Vec<Binding>, Box<Self>),
 
     // TODO: Add deprecation mechanism
     Url(String),
@@ -35,8 +38,9 @@ pub fn parser<'a>() -> impl Parser<'a, &'a str, Expr, extra::Err<Rich<'a, char>>
                 float::float(),
                 integer::integer(),
                 url::url(),
-                ident::ident(),
+                let_in::let_in(expr.clone()),
                 attr_set::attr_set(expr.clone()),
+                ident::ident(),
             )),
             expr.clone()
                 .delimited_by(just('('), just(')'))

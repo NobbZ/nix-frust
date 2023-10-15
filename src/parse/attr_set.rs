@@ -50,14 +50,14 @@ where
 }
 
 fn segment<'a>() -> impl Parser<'a, &'a str, Segment, extra::Err<Rich<'a, char>>> + Clone {
-    ident::raw_ident().map(|i| Segment::Literal(i))
+    ident::raw_ident().map(Segment::Literal)
 }
 
 fn inherit_<'a>() -> impl Parser<'a, &'a str, SetEntry, extra::Err<Rich<'a, char>>> + Clone {
     text::ascii::keyword("inherit")
         .padded()
         .ignore_then(ident::raw_ident().repeated().at_least(1).collect())
-        .map(|attrs: Vec<Ident>| SetEntry::Inherit(attrs))
+        .map(SetEntry::Inherit)
 }
 
 fn inherit_from<'a, E>(

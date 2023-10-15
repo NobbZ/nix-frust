@@ -52,7 +52,7 @@ fn inherit_<'a>() -> impl Parser<'a, &'a str, Binding, extra::Err<Rich<'a, char>
     text::ascii::keyword("inherit")
         .padded()
         .ignore_then(ident::raw_ident().repeated().at_least(1).collect())
-        .map(|attrs: Vec<Ident>| Binding::Inherit(attrs))
+        .map(Binding::Inherit)
 }
 
 fn inherit_from<'a, E>(

@@ -4,6 +4,7 @@
 
 use chumsky::prelude::*;
 
+mod arith;
 mod attr_set;
 mod float;
 mod fun_def;
@@ -20,9 +21,14 @@ use crate::parse::let_in::Binding;
 pub enum Expr {
     Int(i64),
     Flt(f64),
-    Neg(Box<Self>),
     Parens(Box<Self>),
     List(Vec<Self>),
+
+    Neg(Box<Self>),
+    Add(Box<Self>, Box<Self>),
+    Sub(Box<Self>, Box<Self>),
+    Mul(Box<Self>, Box<Self>),
+    Div(Box<Self>, Box<Self>),
 
     Ident(ident::Ident),
 
@@ -38,22 +44,22 @@ pub enum Expr {
 pub fn parser<'a>() -> impl Parser<'a, &'a str, Expr, extra::Err<Rich<'a, char>>> + Clone {
     recursive(|expr| {
         choice((
-            choice((
-                float::float(),
-                integer::integer(),
-                url::url(),
-                let_in::let_in(expr.clone()),
-                fun_def::fun_def(expr.clone()),
-                attr_set::attr_set(expr.clone()),
-                ident::ident(),
-            )),
             expr.clone()
                 .delimited_by(just('('), just(')'))
                 .map(|expr| Expr::Parens(Box::new(expr))),
-            expr.repeated()
+            expr.clone()
+                .repeated()
                 .collect()
                 .delimited_by(just('['), just(']'))
                 .map(Expr::List),
+            float::float(),
+            integer::integer(),
+            url::url(),
+            let_in::let_in(expr.clone()),
+            fun_def::fun_def(expr.clone()),
+            attr_set::attr_set(expr.clone()),
+            ident::ident(),
+            arith::sum(expr.clone()),
         ))
         .padded()
     })

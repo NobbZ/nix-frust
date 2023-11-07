@@ -139,6 +139,7 @@ fn eval_apply(f: &Apply, ctx: &Context) -> Result<Value> {
                     _ => Err(eyre!("Function must be a thunk or attrset")),
                 }
             }
+            Expr::Apply(_) => eval_expr(&fun, ctx),
             expr => todo!("eval fun: expr {expr:?}"),
         }?;
 
@@ -603,7 +604,9 @@ mod tests {
     #[rstest]
     #[case::fun_def_id("let id = a: a; in id 1", Value::Integer(1))]
     #[case::fun_def_one_arg("let f = a: 1 + a; in f 1", Value::Integer(2))]
-    // #[case::fun_def_two_arg("let f = a: b: b + a; in f 1 1", Value::Integer(1))]
+    #[case::fun_def_two_arg_ignore_outer("let f = a: b: b + 1; in f 1 1", Value::Integer(2))]
+    #[case::fun_def_two_arg_ignore_inner("let f = a: b: 1 + a; in f 1 1", Value::Integer(2))]
+    #[case::fun_def_two_arg("let f = a: b: b + a; in f 1 1", Value::Integer(2))]
     fn functions(#[case] code: &str, #[case] expected: Value) {
         assert_eq!(super::code(code).unwrap(), expected);
     }
